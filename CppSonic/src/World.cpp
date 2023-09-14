@@ -10,25 +10,41 @@ void World::load_level_data() {
 	size_t filesize;
 	uint8_t* filedata = (uint8_t*) SDL_LoadFile("levels/ghz1.bin", &filesize);
 
-	printf("levels/ghz1.bin filesize: %d\n", filesize);
+	if (!filedata) {
+		SDL_Log("couldn't open levels/ghz1.bin");
+		goto out;
+	}
 
-	level_width = (int) (*filedata + 1);
+	printf("levels/ghz1.bin filesize: %zu\n", filesize);
+
+	if (filesize == 0) {
+		SDL_Log("levels/ghz1.bin is empty");
+		goto out;
+	}
+
+	level_width = (int)(*filedata) + 1;
 	filedata++;
 
-	level_height = (int) (*filedata + 1);
+	level_height = (int)(*filedata) + 1;
 	filedata++;
 
 	printf("width: %d\n", level_width);
 	printf("height: %d\n", level_height);
 
+	if (level_width <= 0 || level_height <= 0) {
+		SDL_Log("levels/ghz1.bin is corrupted");
+		goto out;
+	}
+
 	if (filesize != level_width * level_height + 2) {
-		SDL_Log("Invalid level data");
+		SDL_Log("levels/ghz1.bin is corrupted");
 		goto out;
 	}
 
 	level_data = (uint8_t*) malloc(level_width * level_height * sizeof(*level_data));
 
 	if (!level_data) {
+		SDL_Log("Out of memory");
 		goto out;
 	}
 
@@ -45,17 +61,17 @@ void World::load_level_data() {
 	printf("\n");
 
 out:
-	SDL_free(filedata);
+	if (filedata) SDL_free(filedata);
 }
 
 void World::load_chunk_data() {
 	size_t filesize;
 	uint16_t* filedata = (uint16_t*) SDL_LoadFile("map256/GHZ.bin", &filesize);
 
-	printf("map256/GHZ.bin filesize: %d\n", filesize);
+	printf("map256/GHZ.bin filesize: %zu\n", filesize);
 
-	printf("filesize %% (2 * 256) %d\n", filesize % (2 * 256));
-	printf("filesize / (2 * 256) %d\n", filesize / (2 * 256));
+	printf("filesize %% (2 * 256) %zu\n", filesize % (2 * 256));
+	printf("filesize / (2 * 256) %zu\n", filesize / (2 * 256));
 
 	// int chunk_count = filesize / (2 * 256);
 

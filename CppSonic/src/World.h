@@ -2,6 +2,12 @@
 
 #include <SDL.h>
 
+struct Tile {
+	uint32_t index;
+	bool hflip;
+	bool vflip;
+};
+
 struct World {
 	float camera_x;
 	float camera_y;
@@ -12,6 +18,7 @@ struct World {
 	uint8_t* level_col_indicies;
 	uint16_t* level_chunk_data;
 	uint8_t* collision_array;
+	Tile* tiles;
 
 	SDL_Texture* tex_ghz256;
 
