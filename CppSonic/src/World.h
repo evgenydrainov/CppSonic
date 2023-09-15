@@ -3,9 +3,13 @@
 #include <SDL.h>
 
 struct Tile {
-	uint32_t index;
+	int index;
 	bool hflip;
 	bool vflip;
+};
+
+struct TileHeight {
+	uint8_t height[16];
 };
 
 struct World {
@@ -14,13 +18,10 @@ struct World {
 
 	int level_width;
 	int level_height;
-	uint8_t* level_data;
-	uint8_t* level_col_indicies;
-	uint16_t* level_chunk_data;
-	uint8_t* collision_array;
 	Tile* tiles;
+	TileHeight* heights;
 
-	SDL_Texture* tex_ghz256;
+	SDL_Texture* tex_ghz16;
 
 	void Init();
 	void Quit();
@@ -31,4 +32,5 @@ struct World {
 	void load_chunk_data();
 	void load_collision_array();
 	void load_collision_indicies();
+	void load_sonic1_genesis_level();
 };

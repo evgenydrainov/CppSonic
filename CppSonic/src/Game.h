@@ -17,7 +17,7 @@ struct Game {
 		World world_instance{};
 	};
 
-	GameState state = GAME_STATE_PLAYING;
+	GameState state;
 	SDL_Window* window;
 	SDL_Renderer* renderer;
 	bool quit;
