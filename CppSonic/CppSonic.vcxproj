@@ -155,11 +155,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Font.cpp" />
     <ClCompile Include="src\Game.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\World.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Font.h" />
+    <ClInclude Include="src\mathh.h" />
     <ClInclude Include="src\misc.h" />
     <ClInclude Include="src\Game.h" />
     <ClInclude Include="src\World.h" />

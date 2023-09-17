@@ -24,6 +24,9 @@
     <ClCompile Include="src\World.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Font.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Game.h">
@@ -33,6 +36,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\misc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mathh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Font.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

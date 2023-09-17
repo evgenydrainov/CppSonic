@@ -2,6 +2,8 @@
 
 #include "World.h"
 
+#include "Font.h"
+
 #include <SDL_mixer.h>
 
 #define GAME_W 424
@@ -21,6 +23,11 @@ struct Game {
 	SDL_Window* window;
 	SDL_Renderer* renderer;
 	bool quit;
+	bool skip_frame;
+	bool frame_advance;
+	bool key_pressed[SDL_SCANCODE_UP + 1];
+
+	Font fnt_CP437;
 
 	void Init();
 	void Quit();

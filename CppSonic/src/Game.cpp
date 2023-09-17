@@ -4,6 +4,7 @@
 #include <SDL_ttf.h>
 
 #include "misc.h"
+#include <string.h>
 
 Game* game = nullptr;
 World* world = nullptr;
@@ -26,7 +27,9 @@ void Game::Init() {
 								  SDL_RENDERER_ACCELERATED
 								  | SDL_RENDERER_TARGETTEXTURE);
 
-	// SDL_RenderSetLogicalSize(renderer, GAME_W, GAME_H);
+	SDL_RenderSetLogicalSize(renderer, GAME_W, GAME_H);
+
+	LoadFont(&fnt_CP437, "PerfectDOSVGA437Win.ttf", 16);
 
 	world = &world_instance;
 	world->Init();
@@ -36,6 +39,8 @@ void Game::Quit() {
 	switch (state) {
 		case GAME_STATE_PLAYING: world->Quit(); break;
 	}
+
+	DestroyFont(&fnt_CP437);
 
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
@@ -57,11 +62,24 @@ void Game::Frame() {
 
 	double frame_end_time = t + (1.0 / (double)GAME_FPS);
 
+	memset(&key_pressed, 0, sizeof(key_pressed));
+
 	{
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			switch (ev.type) {
-				case SDL_QUIT: quit = true; break;
+				case SDL_QUIT: {
+					quit = true;
+					break;
+				}
+
+				case SDL_KEYDOWN: {
+					SDL_Scancode scancode = ev.key.keysym.scancode;
+					if (0 <= scancode && scancode < ArrayLength(key_pressed)) {
+						key_pressed[scancode] = true;
+					}
+					break;
+				}
 			}
 		}
 	}
