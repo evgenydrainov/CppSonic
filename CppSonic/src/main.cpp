@@ -1,12 +1,11 @@
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-	Game game_instance{};
-	game = &game_instance;
+	Game game;
 
-	game->Init();
-	game->Run();
-	game->Quit();
+	game.Init();
+	game.Run();
+	game.Quit();
 
 	return 0;
 }

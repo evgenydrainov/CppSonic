@@ -22,43 +22,88 @@
 #define PLAYER_JUMP_FORCE 6.5f
 #define PLAYER_SLOPE_FACTOR 0.125f
 
-void World::load_sonic1_genesis_level() {
-	uint8_t* level_data = (uint8_t*) SDL_LoadFile("levels/ghz1.bin", nullptr);
+World::World() {
+	world = this;
+}
+
+void World::load_sonic1_level() {
+	std::vector<uint8_t> level_data;
+	std::vector<uint16_t> level_chunk_data;
+	std::vector<uint8_t> collision_array;
+	std::vector<uint8_t> collision_array_rot;
+	std::vector<uint8_t> level_col_indicies;
+	std::vector<uint16_t> startpos;
+	std::vector<uint8_t> angle_map;
+
+	{
+		size_t size;
+		uint8_t* data = (uint8_t*) SDL_LoadFile("levels/ghz1.bin", &size);
+		level_data.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
+
+	{
+		size_t size;
+		uint16_t* data = (uint16_t*) SDL_LoadFile("map256/GHZ.bin", &size);
+		level_chunk_data.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
+
+	{
+		size_t size;
+		uint8_t* data = (uint8_t*) SDL_LoadFile("collide/Collision Array (Normal).bin", &size);
+		collision_array.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
+
+	{
+		size_t size;
+		uint8_t* data = (uint8_t*) SDL_LoadFile("collide/Collision Array (Rotated).bin", &size);
+		collision_array_rot.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
+
+	{
+		size_t size;
+		uint8_t* data = (uint8_t*) SDL_LoadFile("collide/GHZ.bin", &size);
+		level_col_indicies.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
+
+	{
+		size_t size;
+		uint16_t* data = (uint16_t*) SDL_LoadFile("startpos/ghz1.bin", &size);
+		startpos.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
+
+	{
+		size_t size;
+		uint8_t* data = (uint8_t*) SDL_LoadFile("collide/Angle Map.bin", &size);
+		angle_map.assign(data, data + size / sizeof(*data));
+		SDL_free(data);
+	}
 
 	int level_width_in_chunks = (int)level_data[0] + 1;
 	int level_height_in_chunks = (int)level_data[1] + 1;
 	level_width = level_width_in_chunks * 16;
 	level_height = level_height_in_chunks * 16;
 
-	uint16_t* level_chunk_data = (uint16_t*) SDL_LoadFile("map256/GHZ.bin", nullptr);
+	for (size_t i = 0; i < level_chunk_data.size(); i++) {
+		level_chunk_data[i] = (level_chunk_data[i] << 8) | (level_chunk_data[i] >> 8);
+	}
 
-	uint8_t* collision_array = (uint8_t*) SDL_LoadFile("collide/Collision Array (Normal).bin", nullptr);
-
-	size_t level_col_indicies_count;
-	uint8_t* level_col_indicies = (uint8_t*) SDL_LoadFile("collide/GHZ.bin", &level_col_indicies_count);
-
-	uint16_t* startpos = (uint16_t*) SDL_LoadFile("startpos/ghz1.bin", nullptr);
 	startpos[0] = (startpos[0] << 8) | (startpos[0] >> 8);
 	startpos[1] = (startpos[1] << 8) | (startpos[1] >> 8);
 	player.x = (float) startpos[0];
 	player.y = (float) startpos[1];
 	camera_x = player.x - (float)GAME_W / 2.0f;
 	camera_y = player.y - (float)GAME_H / 2.0f;
-	SDL_free(startpos);
 
-	uint8_t* angle_map = (uint8_t*) SDL_LoadFile("collide/Angle Map.bin", nullptr);
-
-	tile_count = level_width * level_height;
-	tiles = (Tile*) malloc(tile_count * sizeof(*tiles));
-	memset(tiles, 0, tile_count * sizeof(*tiles));
-
-	height_count = (int) level_col_indicies_count;
-	heights = (TileHeight*) malloc(height_count * sizeof(*heights));
-	memset(heights, 0, height_count * sizeof(*heights));
-
-	angle_count = height_count;
-	angles = (float*) malloc(angle_count * sizeof(*angles));
-	memset(angles, 0, angle_count * sizeof(*angles));
+	tiles.resize(level_width * level_height);
+	heights.resize(level_col_indicies.size());
+	widths.resize(level_col_indicies.size());
+	angles.resize(level_col_indicies.size());
 
 	for (int y = 0; y < level_height; y++) {
 		for (int x = 0; x < level_width; x++) {
@@ -76,7 +121,6 @@ void World::load_sonic1_genesis_level() {
 			int tile_in_chunk_y = y % 16;
 
 			uint16_t tile = tiles[tile_in_chunk_x + tile_in_chunk_y * 16];
-			tile = (tile << 8) | (tile >> 8);
 
 			this->tiles[x + y * level_width].index = tile & 0b0000'0011'1111'1111;
 			this->tiles[x + y * level_width].hflip = tile & 0b0000'1000'0000'0000;
@@ -84,11 +128,13 @@ void World::load_sonic1_genesis_level() {
 		}
 	}
 
-	for (int i = 0; i < height_count; i++) {
+	for (size_t i = 0; i < heights.size(); i++) {
 		uint8_t index = level_col_indicies[i];
-		uint8_t* height = &collision_array[index * 16];
-		for (int j = 0; j < 16; j++) {
+		uint8_t* height = &collision_array[(size_t)index * 16];
+		uint8_t* width = &collision_array_rot[(size_t)index * 16];
+		for (size_t j = 0; j < 16; j++) {
 			heights[i].height[j] = height[j];
+			widths[i].height[j] = width[j];
 		}
 
 		uint8_t angle = angle_map[index];
@@ -102,63 +148,294 @@ void World::load_sonic1_genesis_level() {
 	tex_ghz16 = IMG_LoadTexture(game->renderer, "ghz16.png");
 
 	{
-		SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, 16 * 16, ((height_count + 15) / 16) * 16, 32, SDL_PIXELFORMAT_ARGB8888);
+		SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, 16 * 16, ((heights.size() + 15) / 16) * 16, 32, SDL_PIXELFORMAT_ARGB8888);
 		SDL_FillRect(surf, nullptr, 0x00000000);
+		SDL_Surface* wsurf = SDL_CreateRGBSurfaceWithFormat(0, 16 * 16, ((heights.size() + 15) / 16) * 16, 32, SDL_PIXELFORMAT_ARGB8888);
+		SDL_FillRect(wsurf, nullptr, 0x00000000);
 
-		for (int tile_index = 0; tile_index < height_count; tile_index++) {
+		for (size_t tile_index = 0; tile_index < heights.size(); tile_index++) {
 			uint8_t* height = get_height(tile_index);
+			uint8_t* width = get_width(tile_index);
 			for (int i = 0; i < 16; i++) {
-				if (height[i] == 0) {
-					continue;
-				}
-
 				int x = tile_index % 16;
 				int y = tile_index / 16;
 
-				if (height[i] <= 0x10) {
-					SDL_Rect line = {
-						x * 16 + i,
-						y * 16 + 16 - height[i],
-						1,
-						height[i]
-					};
-					SDL_FillRect(surf, &line, 0xffffffff);
-				} else if (height[i] >= 0xF0) {
-					SDL_Rect line = {
-						x * 16 + i,
-						y * 16,
-						1,
-						16 - (height[i] - 0xF0)
-					};
-					SDL_FillRect(surf, &line, 0xffff0000);
+				if (height[i] != 0) {
+					if (height[i] <= 0x10) {
+						SDL_Rect line = {
+							x * 16 + i,
+							y * 16 + 16 - height[i],
+							1,
+							height[i]
+						};
+						SDL_FillRect(surf, &line, 0xffffffff);
+					} else if (height[i] >= 0xF0) {
+						SDL_Rect line = {
+							x * 16 + i,
+							y * 16,
+							1,
+							16 - (height[i] - 0xF0)
+						};
+						SDL_FillRect(surf, &line, 0xffff0000);
+					}
+				}
+
+				if (width[i] != 0) {
+					if (width[i] <= 0x10) {
+						SDL_Rect line = {
+							x * 16 + 16 - width[i],
+							y * 16 + i,
+							width[i],
+							1
+						};
+						SDL_FillRect(wsurf, &line, 0xffffffff);
+					} else {
+						SDL_Rect line = {
+							x * 16,
+							y * 16 + i,
+							16 - (width[i] - 0xF0),
+							1
+						};
+						SDL_FillRect(wsurf, &line, 0xffff0000);
+					}
 				}
 			}
 		}
 
 		height_texture = SDL_CreateTextureFromSurface(game->renderer, surf);
+		width_texture = SDL_CreateTextureFromSurface(game->renderer, wsurf);
 
 		SDL_FreeSurface(surf);
+		SDL_FreeSurface(wsurf);
 	}
-
-out:
-	SDL_free(level_data);
-	SDL_free(level_chunk_data);
-	SDL_free(collision_array);
-	SDL_free(level_col_indicies);
-	SDL_free(angle_map);
 }
 
 void World::Init() {
-	load_sonic1_genesis_level();
+	load_sonic1_level();
 }
 
 void World::Quit() {
+	SDL_DestroyTexture(width_texture);
 	SDL_DestroyTexture(height_texture);
 	SDL_DestroyTexture(tex_ghz16);
+}
 
-	free(angles);
-	free(heights);
-	free(tiles);
+void World::player_get_ground_sensors_positions(float* sensor_a_x, float* sensor_a_y, float* sensor_b_x, float* sensor_b_y) {
+	switch (player.mode) {
+		default:
+		case PlayerMode::FLOOR: {
+			*sensor_a_x = player.x - PLAYER_WIDTH_RADIUS;
+			*sensor_a_y = player.y + PLAYER_HEIGHT_RADIUS;
+			*sensor_b_x = player.x + PLAYER_WIDTH_RADIUS;
+			*sensor_b_y = player.y + PLAYER_HEIGHT_RADIUS;
+			break;
+		}
+		case PlayerMode::RIGHT_WALL: {
+			*sensor_a_x = player.x + PLAYER_HEIGHT_RADIUS;
+			*sensor_a_y = player.y + PLAYER_WIDTH_RADIUS;
+			*sensor_b_x = player.x + PLAYER_HEIGHT_RADIUS;
+			*sensor_b_y = player.y - PLAYER_WIDTH_RADIUS;
+			break;
+		}
+		case PlayerMode::CEILING: {
+			*sensor_a_x = player.x + PLAYER_WIDTH_RADIUS;
+			*sensor_a_y = player.y - PLAYER_HEIGHT_RADIUS;
+			*sensor_b_x = player.x - PLAYER_WIDTH_RADIUS;
+			*sensor_b_y = player.y - PLAYER_HEIGHT_RADIUS;
+			break;
+		}
+		case PlayerMode::LEFT_WALL: {
+			*sensor_a_x = player.x - PLAYER_HEIGHT_RADIUS;
+			*sensor_a_y = player.y - PLAYER_WIDTH_RADIUS;
+			*sensor_b_x = player.x - PLAYER_HEIGHT_RADIUS;
+			*sensor_b_y = player.y + PLAYER_WIDTH_RADIUS;
+			break;
+		}
+	}
+}
+
+int World::sensor_check_ground_floor(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
+	*out_found_tile = false;
+
+	auto _get_height = [this](Tile tile, int ix, int iy) {
+		int height = 0;
+		if (uint8_t* h = get_height(tile.index)) {
+			if (!tile.hflip && tile.vflip) {
+				int hh = h[ix % 16];
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
+			}
+			else if (tile.hflip && !tile.vflip) {
+				int hh = h[15 - ix % 16];
+				if (hh <= 0x10) height = hh;
+			}
+			else if (!tile.hflip && !tile.vflip) {
+				int hh = h[ix % 16];
+				if (hh <= 0x10) height = hh;
+			}
+		}
+		return height;
+	};
+
+	int ix = (int) x;
+	int iy = (int) y;
+
+	if (ix < 0 || iy < 0) {
+		return 0;
+	}
+
+	int tile_x = ix / 16;
+	int tile_y = iy / 16;
+
+	if (tile_x >= level_width || tile_y >= level_height) {
+		return 0;
+	}
+
+	Tile tile = get_tile(tile_x, tile_y);
+	int height = _get_height(tile, ix, iy);
+
+	if (height == 0) {
+		if (tile_y + 1 < level_height) {
+			tile_y++;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return (32 - (iy % 16)) - (height + 1);
+	} else if (height == 16) {
+		if (tile_y - 1 >= 0) {
+			tile_y--;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return -(iy % 16) - (height + 1);
+	} else {
+		*out_tile = tile;
+		*out_found_tile = true;
+		*out_tile_x = tile_x;
+		*out_tile_y = tile_y;
+
+		return (16 - (iy % 16)) - (height + 1);
+	}
+
+	return 0;
+}
+
+int World::sensor_check_ground_right(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
+	*out_found_tile = false;
+
+	auto _get_height = [this](Tile tile, int ix, int iy) {
+		int height = 0;
+		if (uint8_t* h = get_width(tile.index)) {
+			if (!tile.hflip && tile.vflip) {
+				int hh = h[15 - iy % 16];
+				if (hh <= 0x10) height = hh;
+			} else if (!tile.hflip && !tile.vflip) {
+				int hh = h[iy % 16];
+				if (hh <= 0x10) height = hh;
+			}
+		}
+		return height;
+	};
+
+	int ix = (int) x;
+	int iy = (int) y;
+
+	if (ix < 0 || iy < 0) {
+		return 0;
+	}
+
+	int tile_x = ix / 16;
+	int tile_y = iy / 16;
+
+	if (tile_x >= level_width || tile_y >= level_height) {
+		return 0;
+	}
+
+	Tile tile = get_tile(tile_x, tile_y);
+	int height = _get_height(tile, ix, iy);
+
+	if (height == 0) {
+		if (tile_x + 1 < level_width) {
+			tile_x++;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return (32 - (ix % 16)) - (height + 1);
+	} else if (height == 16) {
+		if (tile_x - 1 >= 0) {
+			tile_x--;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return -(ix % 16) - (height + 1);
+	} else {
+		*out_tile = tile;
+		*out_found_tile = true;
+		*out_tile_x = tile_x;
+		*out_tile_y = tile_y;
+
+		return (16 - (ix % 16)) - (height + 1);
+	}
+
+	return 0;
+}
+
+int World::sensor_check_ground_ceil(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
+	*out_found_tile = false;
+
+	return 0;
+}
+
+int World::sensor_check_ground_left(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
+	*out_found_tile = false;
+
+	return 0;
+}
+
+int World::sensor_check_ground(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
+	switch (player.mode) {
+		default:
+		case PlayerMode::FLOOR:
+			return sensor_check_ground_floor(x, y, out_tile, out_found_tile, out_tile_x, out_tile_y);
+		case PlayerMode::RIGHT_WALL:
+			return sensor_check_ground_right(x, y, out_tile, out_found_tile, out_tile_x, out_tile_y);
+		case PlayerMode::CEILING:
+			return sensor_check_ground_ceil(x, y, out_tile, out_found_tile, out_tile_x, out_tile_y);
+		case PlayerMode::LEFT_WALL:
+			return sensor_check_ground_left(x, y, out_tile, out_found_tile, out_tile_x, out_tile_y);
+	}
 }
 
 void World::Update(float delta) {
@@ -166,59 +443,12 @@ void World::Update(float delta) {
 
 	int input_h = key[SDL_SCANCODE_RIGHT] - key[SDL_SCANCODE_LEFT];
 
-	if (player_debug) {
+	if (debug) {
 		goto l_skip_player_update;
 	}
 
 	switch (player.state) {
 		case PlayerState::GROUND: {
-			/*
-			
-
-			
-
-			player.xspeed = player.ground_speed;
-			player.yspeed = 0.0f;
-
-			if (!player_check_collision(player.x + player.xspeed * delta, player.y)) {
-				player.x += player.xspeed * delta;
-			} else {
-				for (int i = 16; i--;) {
-					if (!player_check_collision(player.x + sign(player.xspeed), player.y)) {
-						player.x += sign(player.xspeed);
-					} else {
-						break;
-					}
-				}
-				player.ground_speed = 0.0f;
-				player.xspeed = 0.0f;
-			}
-
-			if (!player_check_collision(player.x, player.y + player.yspeed * delta)) {
-				player.y += player.yspeed * delta;
-			} else {
-				for (int i = 16; i--;) {
-					if (!player_check_collision(player.x, player.y + sign(player.yspeed))) {
-						player.y += sign(player.yspeed);
-					} else {
-						break;
-					}
-				}
-				player.yspeed = 0.0f;
-			}
-
-			if (key[SDL_SCANCODE_Z]) {
-				player.state = PlayerState::AIR;
-				player.yspeed = -PLAYER_JUMP_FORCE;
-				player.ground_speed = 0.0f;
-			}
-
-			if (!player_check_collision(player.x, player.y + 1.0f)) {
-				player.state = PlayerState::AIR;
-				player.ground_speed = 0.0f;
-			}
-			*/
-
 			// Adjust Ground Speed based on current Ground Angle (Slope Factor).
 			player.ground_speed -= PLAYER_SLOPE_FACTOR * dsin(player.ground_angle) * delta;
 
@@ -253,72 +483,78 @@ void World::Update(float delta) {
 			player_get_ground_sensors_positions(&sensor_a_x, &sensor_a_y,
 												&sensor_b_x, &sensor_b_y);
 
-			Tile tile_a;
-			Tile tile_b;
-			bool found_a;
-			bool found_b;
-			int dist_a = sensor_check(sensor_a_x, sensor_a_y, &tile_a, &found_a);
-			int dist_b = sensor_check(sensor_b_x, sensor_b_y, &tile_b, &found_b);
-
 			Tile tile;
+			Tile tile_b;
 			bool found;
-			int dist;
-			if (dist_a <= dist_b) {
-				tile = tile_a;
-				found = found_a;
-				dist = dist_a;
-			} else {
+			bool found_b;
+			int tile_x;
+			int tile_y;
+			int tile_x_b;
+			int tile_y_b;
+			float sensor_x = sensor_a_x;
+			float sensor_y = sensor_a_y;
+			int dist = sensor_check_ground(sensor_a_x, sensor_a_y, &tile, &found, &tile_x, &tile_y);
+			int dist_b = sensor_check_ground(sensor_b_x, sensor_b_y, &tile_b, &found_b, &tile_x_b, &tile_y_b);
+			if (dist_b < dist) {
 				tile = tile_b;
 				found = found_b;
 				dist = dist_b;
+				tile_x = tile_x_b;
+				tile_y = tile_y_b;
+				sensor_x = sensor_b_x;
+				sensor_y = sensor_b_y;
 			}
 
-			player.y += (float) dist;
+			if (player.mode == PlayerMode::RIGHT_WALL || player.mode == PlayerMode::LEFT_WALL) {
+				player.x += (float) dist;
+			} else {
+				player.y += (float) dist;
+			}
+
 			if (found) {
 				float angle = get_angle(tile.index);
 				if (angle == -1.0f) { // flagged
-					player.ground_angle = roundf(player.ground_angle / 90.0f) * 90.0f;
+					float a = angle_wrap(player.ground_angle);
+					if (a <= 45.0f) {
+						player.ground_angle = 0.0f;
+					} else if (a <= 134.0f) {
+						player.ground_angle = 90.0f;
+					} else if (a <= 225.0f) {
+						player.ground_angle = 180.0f;
+					} else if (a <= 314.0f) {
+						player.ground_angle = 270.0f;
+					} else {
+						player.ground_angle = 0.0f;
+					}
 				} else {
-					player.ground_angle = angle;
+					if (tile_x * 16 <= (int)sensor_x && (int)sensor_x < (tile_x + 1) * 16
+						&& tile_y * 16 <= (int)sensor_y && (int)sensor_y < (tile_y + 1) * 16)
+					{
+						if (!tile.hflip && tile.vflip) player.ground_angle = 180.0f - angle;
+						else if (tile.hflip && !tile.vflip) player.ground_angle = -angle;
+						else if (!tile.hflip && !tile.vflip) player.ground_angle = angle;
+						else player.ground_angle = 0.0f;
+					}
+				}
+
+				float a = angle_wrap(player.ground_angle);
+				if (a <= 45.0f) {
+					player.mode = PlayerMode::FLOOR;
+				} else if (a <= 134.0f) {
+					player.mode = PlayerMode::RIGHT_WALL;
+				} else if (a <= 225.0f) {
+					player.mode = PlayerMode::CEILING;
+				} else if (a <= 314.0f) {
+					player.mode = PlayerMode::LEFT_WALL;
+				} else {
+					player.mode = PlayerMode::FLOOR;
 				}
 			}
 			break;
 		}
 
 		case PlayerState::AIR: {
-			player.xspeed += (float)input_h * PLAYER_ACC * delta;
-
-			player.xspeed = clamp(player.xspeed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
-
-			player.yspeed += GRAVITY * delta;
-
-			if (!player_check_collision(player.x + player.xspeed * delta, player.y)) {
-				player.x += player.xspeed * delta;
-			} else {
-				for (int i = 16; i--;) {
-					if (!player_check_collision(player.x + sign(player.xspeed), player.y)) {
-						player.x += sign(player.xspeed);
-					} else {
-						break;
-					}
-				}
-				player.xspeed = 0.0f;
-			}
-
-			if (!player_check_collision(player.x, player.y + player.yspeed * delta)) {
-				player.y += player.yspeed * delta;
-			} else {
-				for (int i = 16; i--;) {
-					if (!player_check_collision(player.x, player.y + sign(player.yspeed))) {
-						player.y += sign(player.yspeed);
-					} else {
-						break;
-					}
-				}
-				player.state = PlayerState::GROUND;
-				player.ground_speed = player.xspeed;
-				player.yspeed = 0.0f;
-			}
+			
 			break;
 		}
 	}
@@ -329,10 +565,10 @@ void World::Update(float delta) {
 l_skip_player_update:
 
 	if (game->key_pressed[SDL_SCANCODE_ESCAPE]) {
-		player_debug ^= true;
+		debug ^= true;
 	}
 
-	if (player_debug) {
+	if (debug) {
 		if (key[SDL_SCANCODE_LEFT])  {player.x -= 5.0f * delta; camera_x -= 5.0f * delta;}
 		if (key[SDL_SCANCODE_RIGHT]) {player.x += 5.0f * delta; camera_x += 5.0f * delta;}
 		if (key[SDL_SCANCODE_UP])    {player.y -= 5.0f * delta; camera_y -= 5.0f * delta;}
@@ -380,162 +616,29 @@ Tile World::get_tile_world(float x, float y) {
 }
 
 uint8_t* World::get_height(int tile_index) {
-	if (0 <= tile_index && tile_index < height_count) {
+	if (0 <= tile_index && tile_index < heights.size()) {
 		return heights[tile_index].height;
 	}
 	return nullptr;
 }
 
+uint8_t* World::get_width(int tile_index) {
+	if (0 <= tile_index && tile_index < widths.size()) {
+		return widths[tile_index].height;
+	}
+	return nullptr;
+}
+
 float World::get_angle(int tile_index) {
-	if (0 <= tile_index && tile_index < angle_count) {
+	if (0 <= tile_index && tile_index < angles.size()) {
 		return angles[tile_index];
 	}
 	return 0.0f;
 }
 
-int World::sensor_check(float x, float y, Tile* out_tile, bool* out_found_file) {
-	*out_found_file = false;
-
-	int ix = (int) x;
-	int iy = (int) y;
-
-	if (ix < 0 || iy < 0) {
-		return 0;
-	}
-
-	int tile_x = ix / 16;
-	int tile_y = iy / 16;
-
-	if (tile_x >= level_width || tile_y >= level_height) {
-		return 0;
-	}
-
-	Tile tile = get_tile(tile_x, tile_y);
-	int height = 0;
-	if (uint8_t* h = get_height(tile.index)) height = h[ix % 16];
-
-	if (tile.hflip || tile.vflip) {
-		height = 0;
-	}
-
-	if (height > 0x10) {
-		height = 0;
-	}
-
-	if (height == 0) {
-		if (tile_y + 1 < level_height) {
-			tile_y++;
-			tile = get_tile(tile_x, tile_y);
-			height = 0;
-			if (uint8_t* h = get_height(tile.index)) height = h[ix % 16];
-
-			if (tile.hflip || tile.vflip) {
-				height = 0;
-			}
-
-			if (height > 0x10) {
-				height = 0;
-			}
-
-			*out_tile = tile;
-			*out_found_file = true;
-		} else {
-			height = 0;
-		}
-
-		return (32 - (iy % 16)) - (height + 1);
-	} else if (height == 16) {
-		if (tile_y - 1 >= 0) {
-			tile_y--;
-			tile = get_tile(tile_x, tile_y);
-			height = 0;
-			if (uint8_t* h = get_height(tile.index)) height = h[ix % 16];
-
-			if (tile.hflip || tile.vflip) {
-				height = 0;
-			}
-
-			if (height > 0x10) {
-				height = 0;
-			}
-
-			*out_tile = tile;
-			*out_found_file = true;
-		} else {
-			height = 0;
-		}
-
-		return -(iy % 16) - (height + 1);
-	} else {
-		*out_tile = tile;
-		*out_found_file = true;
-
-		return (16 - (iy % 16)) - (height + 1);
-	}
-
-	return 0;
-}
-
-void World::player_get_ground_sensors_positions(float* sensor_a_x, float* sensor_a_y, float* sensor_b_x, float* sensor_b_y) {
-	switch (player.mode) {
-		default:
-		case PlayerMode::FLOOR: {
-			*sensor_a_x = player.x - PLAYER_WIDTH_RADIUS;
-			*sensor_a_y = player.y + PLAYER_HEIGHT_RADIUS;
-			*sensor_b_x = player.x + PLAYER_WIDTH_RADIUS;
-			*sensor_b_y = player.y + PLAYER_HEIGHT_RADIUS;
-			break;
-		}
-
-		case PlayerMode::RIGHT_WALL: {
-			break;
-		}
-
-		case PlayerMode::CEILING: {
-			break;
-		}
-
-		case PlayerMode::LEFT_WALL: {
-			break;
-		}
-	}
-}
-
-bool World::player_check_collision(float x, float y) {
-	for (float dy = -PLAYER_HEIGHT_RADIUS; dy <= PLAYER_HEIGHT_RADIUS; dy++) {
-		for (float dx = -PLAYER_WIDTH_RADIUS; dx <= PLAYER_WIDTH_RADIUS; dx++) {
-			int pixel_x = (int) (x + dx);
-			int pixel_y = (int) (y + dy);
-			if (pixel_x < 0 || pixel_y < 0) {
-				continue;
-			}
-			int tile_x = pixel_x / 16;
-			int tile_y = pixel_y / 16;
-			if (tile_x >= level_width || tile_y >= level_height) {
-				continue;
-			}
-			Tile* tile = &tiles[tile_x + tile_y * level_width];
-			if (tile->hflip) continue;
-			if (tile->vflip) continue;
-			if (tile->index >= height_count) {
-				continue;
-			}
-			uint8_t* heights = this->heights[tile->index].height;
-			uint8_t height = heights[pixel_x % 16];
-			if (height == 0) {
-				continue;
-			}
-			if (height <= 0x10) {
-				if (16 - (pixel_y % 16) <= height) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
-}
-
 void World::Draw(float delta) {
+	const Uint8* key = SDL_GetKeyboardState(nullptr);
+
 	int target_w;
 	int target_h;
 	SDL_RenderGetLogicalSize(game->renderer, &target_w, &target_h);
@@ -577,23 +680,51 @@ void World::Draw(float delta) {
 			if (tile.vflip) flip |= SDL_FLIP_VERTICAL;
 			SDL_RenderCopyEx(game->renderer, tex_ghz16, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
 
-			if (tile.hflip || tile.vflip) {
-				SDL_SetTextureColorMod(height_texture, 128, 128, 128);
-			} else {
-				SDL_SetTextureColorMod(height_texture, 255, 255, 255);
+			if (key[SDL_SCANCODE_3]) {
+				if (tile.hflip || tile.vflip) {
+					SDL_SetTextureColorMod(height_texture, 128, 128, 128);
+				} else {
+					SDL_SetTextureColorMod(height_texture, 255, 255, 255);
+				}
+				SDL_RenderCopyEx(game->renderer, height_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
 			}
-			SDL_RenderCopyEx(game->renderer, height_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+			if (key[SDL_SCANCODE_4]) {
+				if (tile.hflip || tile.vflip) {
+					SDL_SetTextureColorMod(width_texture, 128, 128, 128);
+				} else {
+					SDL_SetTextureColorMod(width_texture, 255, 255, 255);
+				}
+				SDL_RenderCopyEx(game->renderer, width_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+			}
 		}
 	}
 
 	// draw player hitbox
 	{
-		SDL_Rect rect = {
-			(int) (player.x - PLAYER_WIDTH_RADIUS  - camera_x),
-			(int) (player.y - PLAYER_HEIGHT_RADIUS - camera_y),
-			(int) (PLAYER_WIDTH_RADIUS  * 2.0f + 1.0f),
-			(int) (PLAYER_HEIGHT_RADIUS * 2.0f + 1.0f)
-		};
+		SDL_Rect rect;
+		switch (player.mode) {
+			default:
+			case PlayerMode::FLOOR:
+			case PlayerMode::CEILING: {
+				rect = {
+					(int) (player.x - PLAYER_WIDTH_RADIUS  - camera_x),
+					(int) (player.y - PLAYER_HEIGHT_RADIUS - camera_y),
+					(int) (PLAYER_WIDTH_RADIUS  * 2.0f + 1.0f),
+					(int) (PLAYER_HEIGHT_RADIUS * 2.0f + 1.0f)
+				};
+				break;
+			}
+			case PlayerMode::RIGHT_WALL:
+			case PlayerMode::LEFT_WALL: {
+				rect = {
+					(int) (player.x - PLAYER_HEIGHT_RADIUS - camera_x),
+					(int) (player.y - PLAYER_WIDTH_RADIUS  - camera_y),
+					(int) (PLAYER_HEIGHT_RADIUS * 2.0f + 1.0f),
+					(int) (PLAYER_WIDTH_RADIUS  * 2.0f + 1.0f)
+				};
+				break;
+			}
+		}
 		SDL_SetRenderDrawColor(game->renderer, 128, 128, 255, 255);
 		SDL_RenderDrawRect(game->renderer, &rect);
 	}
@@ -605,107 +736,29 @@ void World::Draw(float delta) {
 		float sensor_b_x;
 		float sensor_b_y;
 		player_get_ground_sensors_positions(&sensor_a_x, &sensor_a_y, &sensor_b_x, &sensor_b_y);
-		SDL_SetRenderDrawColor(game->renderer, 0, 0, 255, 255);
+		SDL_SetRenderDrawColor(game->renderer, 255, 0, 0, 255);
 		SDL_RenderDrawPoint(game->renderer,
 							(int) (sensor_a_x - camera_x),
 							(int) (sensor_a_y - camera_y));
+		SDL_SetRenderDrawColor(game->renderer, 0, 0, 255, 255);
 		SDL_RenderDrawPoint(game->renderer,
 							(int) (sensor_b_x - camera_x),
 							(int) (sensor_b_y - camera_y));
 	}
 
-	int draw_x = 0;
-	int draw_y = 0;
-
-	{
-		int mouse_x_window;
-		int mouse_y_window;
-		SDL_GetMouseState(&mouse_x_window, &mouse_y_window);
-		float mouse_x;
-		float mouse_y;
-		SDL_RenderWindowToLogical(game->renderer, mouse_x_window, mouse_y_window, &mouse_x, &mouse_y);
-		float x = mouse_x + camera_x;
-		float y = mouse_y + camera_y;
+	if (debug) {
+		float x = game->mouse_x + camera_x;
+		float y = game->mouse_y + camera_y;
 		int tile_x = (int)x / 16;
 		int tile_y = (int)y / 16;
-		Tile tile = {};
-		uint8_t height_stub[16]{};
-		uint8_t* height = height_stub;
-		float angle = 0.0f;
-		if ((int)x > 0 && (int)y > 0 && tile_x < level_width && tile_y < level_height) {
-			tile = get_tile(tile_x, tile_y);
-			if (tile.index < height_count) {
-				height = get_height(tile.index);
-				angle = get_angle(tile.index);
-			}
-
-			if (player_debug) {
-				SDL_Rect rect = {tile_x * 16 - (int)camera_x, tile_y * 16 - (int)camera_y, 16, 16};
-				SDL_SetRenderDrawColor(game->renderer, 128, 128, 128, 255);
-				SDL_RenderDrawRect(game->renderer, &rect);
-			}
-		}
-
-		char buf[200];
-		stb_snprintf(buf,
-					 sizeof(buf),
-					 "x: %f\n"
-					 "y: %f\n"
-					 "xspeed: %f\n"
-					 "yspeed: %f\n"
-					 "ground speed: %f\n"
-					 "ground angle: %f\n",
-					 player.x,
-					 player.y,
-					 player.xspeed,
-					 player.yspeed,
-					 player.ground_speed,
-					 player.ground_angle);
-		draw_y = DrawTextShadow(&game->fnt_CP437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
-
-		if (player_debug) {
-			char buf[200];
-			stb_snprintf(buf,
-						 sizeof(buf),
-						 "mouse x: %d\n"
-						 "mouse y: %d\n"
-						 "mouse tile: %d\n"
-						 "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x \n"
-						 "angle: %f\n"
-						 "hflip: %d vflip: %d\n",
-						 tile_x,
-						 tile_y,
-						 tile.index,
-						 height[ 0], height[ 1], height[ 2], height[ 3], height[ 4], height[ 5], height[ 6], height[ 7],
-						 height[ 8], height[ 9], height[10], height[11], height[12], height[13], height[14], height[15],
-						 angle,
-						 tile.hflip, tile.vflip);
-			draw_y = DrawTextShadow(&game->fnt_CP437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
-		}
+		tile_x = clamp(tile_x, 0, level_width  - 1);
+		tile_y = clamp(tile_y, 0, level_height - 1);
+		
+		SDL_Rect rect = {tile_x * 16 - (int)camera_x, tile_y * 16 - (int)camera_y, 16, 16};
+		SDL_SetRenderDrawColor(game->renderer, 196, 196, 196, 255);
+		SDL_RenderDrawRect(game->renderer, &rect);
 	}
 
-	/*
-	{
-		SDL_Rect dest = {};
-		SDL_QueryTexture(height_texture, nullptr, nullptr, &dest.w, &dest.h);
-		SDL_RenderCopy(game->renderer, height_texture, nullptr, &dest);
-		for (int i = 0; i < angle_count; i++) {
-			uint8_t angle = get_angle(i);
-			uint8_t left = angle >> 4;
-			uint8_t right = angle & 0b0000'1111;
-			SDL_SetRenderDrawColor(game->renderer, 0, 0, 255, 255);
-			// SDL_RenderDrawLine(game->renderer,
-			// 				   (i % 16) * 16 + 0,
-			// 				   (i / 16) * 16 + left,
-			// 				   (i % 16) * 16 + 16,
-			// 				   (i / 16) * 16 + right);
-			float a = get_angle(i);
-			SDL_RenderDrawLine(game->renderer,
-							   (i % 16) * 16 + 0,
-							   (i / 16) * 16 + 16,
-							   (i % 16) * 16 + 0  + lengthdir_x(16, a),
-							   (i / 16) * 16 + 16 + lengthdir_y(16, a));
-		}
-	}
-	//*/
+	if (key[SDL_SCANCODE_1]) SDL_RenderCopy(game->renderer, height_texture, nullptr, nullptr);
+	if (key[SDL_SCANCODE_2]) SDL_RenderCopy(game->renderer, width_texture, nullptr, nullptr);
 }
