@@ -8,6 +8,8 @@ struct Tile {
 	int index;
 	bool hflip;
 	bool vflip;
+	bool top_solid;
+	bool left_right_bottom_solid;
 };
 
 struct TileHeight {

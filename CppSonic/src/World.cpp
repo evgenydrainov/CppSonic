@@ -111,8 +111,13 @@ void World::load_sonic1_level() {
 			int chunk_y = y / 16;
 
 			uint8_t chunk_index = level_data[2 + chunk_x + chunk_y * level_width_in_chunks] & 0b0111'1111;
+			bool loop = level_data[2 + chunk_x + chunk_y * level_width_in_chunks] & 0b1000'0000;
 			if (chunk_index == 0) {
 				continue;
+			}
+
+			if (loop) {
+				chunk_index++;
 			}
 
 			uint16_t* tiles = &level_chunk_data[(chunk_index - 1) * 256];
@@ -125,6 +130,8 @@ void World::load_sonic1_level() {
 			this->tiles[x + y * level_width].index = tile & 0b0000'0011'1111'1111;
 			this->tiles[x + y * level_width].hflip = tile & 0b0000'1000'0000'0000;
 			this->tiles[x + y * level_width].vflip = tile & 0b0001'0000'0000'0000;
+			this->tiles[x + y * level_width].top_solid = tile & 0b0010'0000'0000'0000;
+			this->tiles[x + y * level_width].left_right_bottom_solid = tile & 0b0100'0000'0000'0000;
 		}
 	}
 
@@ -258,9 +265,17 @@ int World::sensor_check_ground_floor(float x, float y, Tile* out_tile, bool* out
 	*out_found_tile = false;
 
 	auto _get_height = [this](Tile tile, int ix, int iy) {
+		if (!tile.top_solid) {
+			return 0;
+		}
+
 		int height = 0;
 		if (uint8_t* h = get_height(tile.index)) {
-			if (!tile.hflip && tile.vflip) {
+			if (tile.hflip && tile.vflip) {
+				int hh = h[15 - ix % 16];
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
+			} else if (!tile.hflip && tile.vflip) {
 				int hh = h[ix % 16];
 				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
 				else if (hh == 16) height = 16;
@@ -340,11 +355,21 @@ int World::sensor_check_ground_right(float x, float y, Tile* out_tile, bool* out
 	*out_found_tile = false;
 
 	auto _get_height = [this](Tile tile, int ix, int iy) {
+		if (!tile.left_right_bottom_solid) {
+			return 0;
+		}
+
 		int height = 0;
 		if (uint8_t* h = get_width(tile.index)) {
-			if (!tile.hflip && tile.vflip) {
+			if (tile.hflip && tile.vflip) {
+				int hh = h[15 - iy % 16];
+				if (hh == 16) height = 16;
+			} else if (!tile.hflip && tile.vflip) {
 				int hh = h[15 - iy % 16];
 				if (hh <= 0x10) height = hh;
+			} else if (tile.hflip && !tile.vflip) {
+				int hh = h[iy % 16];
+				if (hh == 16) height = 16;
 			} else if (!tile.hflip && !tile.vflip) {
 				int hh = h[iy % 16];
 				if (hh <= 0x10) height = hh;
@@ -415,11 +440,173 @@ int World::sensor_check_ground_right(float x, float y, Tile* out_tile, bool* out
 int World::sensor_check_ground_ceil(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
 	*out_found_tile = false;
 
+	auto _get_height = [this](Tile tile, int ix, int iy) {
+		if (!tile.left_right_bottom_solid) {
+			return 0;
+		}
+
+		int height = 0;
+		if (uint8_t* h = get_height(tile.index)) {
+			if (tile.hflip && tile.vflip) {
+				int hh = h[15 - ix % 16];
+				if (hh == 16) height = 16;
+			} else if (!tile.hflip && tile.vflip) {
+				int hh = h[ix % 16];
+				if (hh == 16) height = 16;
+			} else if (tile.hflip && !tile.vflip) {
+				int hh = h[15 - ix % 16];
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
+			} else if (!tile.hflip && !tile.vflip) {
+				int hh = h[ix % 16];
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
+			}
+		}
+		return height;
+	};
+
+	int ix = (int) x;
+	int iy = (int) y;
+
+	if (ix < 0 || iy < 0) {
+		return 0;
+	}
+
+	int tile_x = ix / 16;
+	int tile_y = iy / 16;
+
+	if (tile_x >= level_width || tile_y >= level_height) {
+		return 0;
+	}
+
+	Tile tile = get_tile(tile_x, tile_y);
+	int height = _get_height(tile, ix, iy);
+
+	if (height == 0) {
+		if (tile_y - 1 >= 0) {
+			tile_y--;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return 16 + (iy % 16) - (height + 1);
+	} else if (height == 16) {
+		if (tile_y + 1 < level_height) {
+			tile_y++;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return -16 + (iy % 16) - (height + 1);
+	} else {
+		*out_tile = tile;
+		*out_found_tile = true;
+		*out_tile_x = tile_x;
+		*out_tile_y = tile_y;
+
+		return (iy % 16) - (height + 1);
+	}
+
 	return 0;
 }
 
 int World::sensor_check_ground_left(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y) {
 	*out_found_tile = false;
+
+	auto _get_height = [this](Tile tile, int ix, int iy) {
+		if (!tile.left_right_bottom_solid) {
+			return 0;
+		}
+
+		int height = 0;
+		if (uint8_t* h = get_width(tile.index)) {
+			if (tile.hflip && tile.vflip) {
+				int hh = h[15 - iy % 16];
+				if (hh <= 0x10) height = hh;
+			} else if (!tile.hflip && tile.vflip) {
+				int hh = h[15 - iy % 16];
+				if (hh == 16) height = 16;
+			} else if (tile.hflip && !tile.vflip) {
+				int hh = h[iy % 16];
+				if (hh <= 0x10) height = hh;
+			} else if (!tile.hflip && !tile.vflip) {
+				int hh = h[iy % 16];
+				if (hh == 16) height = 16;
+			}
+		}
+		return height;
+	};
+
+	int ix = (int) x;
+	int iy = (int) y;
+
+	if (ix < 0 || iy < 0) {
+		return 0;
+	}
+
+	int tile_x = ix / 16;
+	int tile_y = iy / 16;
+
+	if (tile_x >= level_width || tile_y >= level_height) {
+		return 0;
+	}
+
+	Tile tile = get_tile(tile_x, tile_y);
+	int height = _get_height(tile, ix, iy);
+
+	if (height == 0) {
+		if (tile_x - 1 >= 0) {
+			tile_x--;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return 16 + (ix % 16) - (height + 1);
+	} else if (height == 16) {
+		if (tile_x + 1 < level_width) {
+			tile_x++;
+			tile = get_tile(tile_x, tile_y);
+			height = _get_height(tile, ix, iy);
+
+			*out_tile = tile;
+			*out_found_tile = true;
+			*out_tile_x = tile_x;
+			*out_tile_y = tile_y;
+		} else {
+			height = 0;
+		}
+
+		return -16 + (ix % 16) - (height + 1);
+	} else {
+		*out_tile = tile;
+		*out_found_tile = true;
+		*out_tile_x = tile_x;
+		*out_tile_y = tile_y;
+
+		return (ix % 16) - (height + 1);
+	}
 
 	return 0;
 }
@@ -505,10 +692,12 @@ void World::Update(float delta) {
 				sensor_y = sensor_b_y;
 			}
 
-			if (player.mode == PlayerMode::RIGHT_WALL || player.mode == PlayerMode::LEFT_WALL) {
-				player.x += (float) dist;
-			} else {
-				player.y += (float) dist;
+			switch (player.mode) {
+				default:
+				case PlayerMode::FLOOR:      player.y += (float) dist; break;
+				case PlayerMode::RIGHT_WALL: player.x += (float) dist; break;
+				case PlayerMode::CEILING:    player.y -= (float) dist; break;
+				case PlayerMode::LEFT_WALL:  player.x -= (float) dist; break;
 			}
 
 			if (found) {
@@ -530,7 +719,8 @@ void World::Update(float delta) {
 					if (tile_x * 16 <= (int)sensor_x && (int)sensor_x < (tile_x + 1) * 16
 						&& tile_y * 16 <= (int)sensor_y && (int)sensor_y < (tile_y + 1) * 16)
 					{
-						if (!tile.hflip && tile.vflip) player.ground_angle = 180.0f - angle;
+						if (tile.hflip && tile.vflip) player.ground_angle = -(180.0f - angle);
+						else if (!tile.hflip && tile.vflip) player.ground_angle = 180.0f - angle;
 						else if (tile.hflip && !tile.vflip) player.ground_angle = -angle;
 						else if (!tile.hflip && !tile.vflip) player.ground_angle = angle;
 						else player.ground_angle = 0.0f;
@@ -559,8 +749,8 @@ void World::Update(float delta) {
 		}
 	}
 
-	camera_x = player.x - (float)GAME_W / 2.0f;
-	camera_y = player.y - (float)GAME_H / 2.0f;
+	camera_x = (float) ((int)player.x - GAME_W / 2);
+	camera_y = (float) ((int)player.y - GAME_H / 2);
 
 l_skip_player_update:
 
@@ -569,15 +759,16 @@ l_skip_player_update:
 	}
 
 	if (debug) {
-		if (key[SDL_SCANCODE_LEFT])  {player.x -= 5.0f * delta; camera_x -= 5.0f * delta;}
-		if (key[SDL_SCANCODE_RIGHT]) {player.x += 5.0f * delta; camera_x += 5.0f * delta;}
-		if (key[SDL_SCANCODE_UP])    {player.y -= 5.0f * delta; camera_y -= 5.0f * delta;}
-		if (key[SDL_SCANCODE_DOWN])  {player.y += 5.0f * delta; camera_y += 5.0f * delta;}
+		float spd = 10.0f;
+		if (key[SDL_SCANCODE_LEFT])  {player.x -= spd * delta; camera_x -= spd * delta;}
+		if (key[SDL_SCANCODE_RIGHT]) {player.x += spd * delta; camera_x += spd * delta;}
+		if (key[SDL_SCANCODE_UP])    {player.y -= spd * delta; camera_y -= spd * delta;}
+		if (key[SDL_SCANCODE_DOWN])  {player.y += spd * delta; camera_y += spd * delta;}
 
-		if (key[SDL_SCANCODE_J]) {camera_x -= 5.0f * delta;}
-		if (key[SDL_SCANCODE_L]) {camera_x += 5.0f * delta;}
-		if (key[SDL_SCANCODE_I]) {camera_y -= 5.0f * delta;}
-		if (key[SDL_SCANCODE_K]) {camera_y += 5.0f * delta;}
+		if (key[SDL_SCANCODE_J]) {camera_x -= spd * delta;}
+		if (key[SDL_SCANCODE_L]) {camera_x += spd * delta;}
+		if (key[SDL_SCANCODE_I]) {camera_y -= spd * delta;}
+		if (key[SDL_SCANCODE_K]) {camera_y += spd * delta;}
 
 		player.xspeed = 0.0f;
 		player.yspeed = 0.0f;
@@ -651,6 +842,7 @@ void World::Draw(float delta) {
 		}
 	}
 
+	// draw tilemap
 	int start_x = max((int)camera_x / 16, 0);
 	int start_y = max((int)camera_y / 16, 0);
 
@@ -695,6 +887,24 @@ void World::Draw(float delta) {
 					SDL_SetTextureColorMod(width_texture, 255, 255, 255);
 				}
 				SDL_RenderCopyEx(game->renderer, width_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+			}
+			if (key[SDL_SCANCODE_5]) {
+				float angle = get_angle(tile.index);
+				if (angle == -1.0f && (tile.top_solid || tile.left_right_bottom_solid)) {
+					DrawTextShadow(&game->fnt_CP437, "*", dest.x + 8, dest.y + 8, HALIGN_CENTER, VALIGN_MIDDLE);
+				}
+			}
+			if (key[SDL_SCANCODE_6]) {
+				if (tile.top_solid) {
+					// SDL_SetRenderDrawColor(game->renderer, 255, 255, 255, 255);
+					// SDL_RenderDrawLine(game->renderer, dest.x, dest.y, dest.x + 16, dest.y);
+					SDL_RenderCopyEx(game->renderer, height_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+				}
+			}
+			if (key[SDL_SCANCODE_7]) {
+				if (tile.left_right_bottom_solid) {
+					SDL_RenderCopyEx(game->renderer, height_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+				}
 			}
 		}
 	}
@@ -759,6 +969,14 @@ void World::Draw(float delta) {
 		SDL_RenderDrawRect(game->renderer, &rect);
 	}
 
-	if (key[SDL_SCANCODE_1]) SDL_RenderCopy(game->renderer, height_texture, nullptr, nullptr);
-	if (key[SDL_SCANCODE_2]) SDL_RenderCopy(game->renderer, width_texture, nullptr, nullptr);
+	if (key[SDL_SCANCODE_1]) {
+		SDL_Rect dest = {};
+		SDL_QueryTexture(height_texture, nullptr, nullptr, &dest.w, &dest.h);
+		SDL_RenderCopy(game->renderer, height_texture, nullptr, &dest);
+	}
+	if (key[SDL_SCANCODE_2]) {
+		SDL_Rect dest = {};
+		SDL_QueryTexture(height_texture, nullptr, nullptr, &dest.w, &dest.h);
+		SDL_RenderCopy(game->renderer, width_texture, nullptr, &dest);
+	}
 }
