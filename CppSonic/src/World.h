@@ -4,18 +4,6 @@
 
 #include <vector>
 
-struct Tile {
-	int index;
-	bool hflip;
-	bool vflip;
-	bool top_solid;
-	bool left_right_bottom_solid;
-};
-
-struct TileHeight {
-	uint8_t height[16];
-};
-
 enum struct PlayerState {
 	GROUND,
 	AIR
@@ -26,6 +14,26 @@ enum struct PlayerMode {
 	RIGHT_WALL,
 	CEILING,
 	LEFT_WALL
+};
+
+enum {
+	INPUT_RIGHT = 1,
+	INPUT_UP    = 1 << 1,
+	INPUT_LEFT  = 1 << 2,
+	INPUT_DOWN  = 1 << 3,
+	INPUT_JUMP  = 1 << 4
+};
+
+struct Tile {
+	int index;
+	bool hflip;
+	bool vflip;
+	bool top_solid;
+	bool left_right_bottom_solid;
+};
+
+struct TileHeight {
+	uint8_t height[16];
 };
 
 struct Player {
@@ -59,6 +67,10 @@ public:
 	float camera_x = 0.0f;
 	float camera_y = 0.0f;
 
+	uint32_t input = 0;
+	uint32_t input_press = 0;
+	uint32_t input_release = 0;
+
 	int level_width = 0;
 	int level_height = 0;
 	std::vector<Tile> tiles;
@@ -66,9 +78,12 @@ public:
 	std::vector<TileHeight> widths;
 	std::vector<float> angles;
 
-	SDL_Texture* tex_ghz16 = nullptr;
+	SDL_Texture* tileset_texture = nullptr;
 	SDL_Texture* height_texture = nullptr;
 	SDL_Texture* width_texture = nullptr;
+
+	int target_w = 0;
+	int target_h = 0;
 
 	bool debug = false;
 
@@ -76,9 +91,12 @@ private:
 	void load_sonic1_level();
 
 	void player_get_ground_sensors_positions(float* sensor_a_x, float* sensor_a_y, float* sensor_b_x, float* sensor_b_y);
-	int sensor_check_ground      (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int sensor_check_ground_floor(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int sensor_check_ground_right(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int sensor_check_ground_ceil (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int sensor_check_ground_left (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
+	int  ground_sensor_check      (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
+	int  ground_sensor_check_floor(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
+	int  ground_sensor_check_right(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
+	int  ground_sensor_check_ceil (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
+	int  ground_sensor_check_left (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
+	void player_ground_sensor_collision();
+
+	friend int editor_main(int, char**);
 };

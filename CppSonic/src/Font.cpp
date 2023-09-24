@@ -2,11 +2,7 @@
 
 #include "Game.h"
 
-#ifdef _WIN32
 #include <SDL_ttf.h>
-#else
-#include <SDL2/SDL_ttf.h>
-#endif
 
 SDL_Point DrawText(Font* font, const char* text,
 				   int x, int y,

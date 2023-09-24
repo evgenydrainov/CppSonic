@@ -30,9 +30,7 @@ void Game::Init() {
 							  GAME_W, GAME_H,
 							  SDL_WINDOW_RESIZABLE);
 
-	renderer = SDL_CreateRenderer(window, -1,
-								  SDL_RENDERER_ACCELERATED
-								  | SDL_RENDERER_TARGETTEXTURE);
+	renderer = SDL_CreateRenderer(window, -1, 0);
 
 	game_texture = SDL_CreateTexture(renderer,
 									 SDL_PIXELFORMAT_ARGB8888,

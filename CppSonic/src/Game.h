@@ -43,6 +43,8 @@ private:
 	bool quit = false;
 	bool skip_frame = false;
 	bool frame_advance = false;
+
+	friend int editor_main(int, char**);
 };
 
 extern Game* game;
