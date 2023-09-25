@@ -1,5 +1,7 @@
 #pragma once
 
+// #define EDITOR
+
 #include "World.h"
 #include "Font.h"
 

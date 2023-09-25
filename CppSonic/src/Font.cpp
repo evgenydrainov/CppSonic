@@ -8,6 +8,8 @@ SDL_Point DrawText(Font* font, const char* text,
 				   int x, int y,
 				   int halign, int valign,
 				   SDL_Color color) {
+	if (!font->texture || !font->glyphs) return {};
+
 	if (halign != HALIGN_LEFT || valign != VALIGN_TOP) {
 		SDL_Point m = MeasureText(font, text);
 		if (halign == HALIGN_CENTER) {
@@ -69,6 +71,8 @@ SDL_Point DrawTextShadow(Font* font, const char* text,
 }
 
 SDL_Point MeasureText(Font* font, const char* text) {
+	if (!font->texture || !font->glyphs) return {};
+
 	int text_x = 0;
 	int text_y = 0;
 
@@ -113,6 +117,12 @@ SDL_Point MeasureText(Font* font, const char* text) {
 }
 
 void LoadFont(Font* font, const char* fname, int ptsize) {
+	TTF_Font* ttf_font = TTF_OpenFont(fname, ptsize);
+
+	if (!ttf_font) {
+		return;
+	}
+
 	font->ptsize = ptsize;
 	font->glyphs = (GlyphData*) malloc(95 * sizeof(GlyphData));
 	SDL_memset(font->glyphs, 0, 95 * sizeof(GlyphData));
@@ -120,7 +130,6 @@ void LoadFont(Font* font, const char* fname, int ptsize) {
 	int atlas_width = 256;
 	int atlas_height = 256;
 
-	TTF_Font* ttf_font = TTF_OpenFont(fname, ptsize);
 	SDL_Surface* atlas_surf = SDL_CreateRGBSurfaceWithFormat(0, atlas_width, atlas_height, 32, SDL_PIXELFORMAT_ARGB8888);
 
 	font->height = TTF_FontHeight(ttf_font);
@@ -185,9 +194,9 @@ void LoadFont(Font* font, const char* fname, int ptsize) {
 }
 
 void DestroyFont(Font* font) {
-	SDL_DestroyTexture(font->texture);
+	if (font->texture) SDL_DestroyTexture(font->texture);
 	font->texture = nullptr;
 
-	free(font->glyphs);
+	if (font->glyphs) free(font->glyphs);
 	font->glyphs = nullptr;
 }

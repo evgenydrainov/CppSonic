@@ -1,6 +1,6 @@
 #include "Game.h"
 
-#if 0
+#ifndef EDITOR
 
 int main(int argc, char* argv[]) {
 	Game game;
@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
 int main(int argc, char* argv[]) {
 	extern int editor_main(int, char**);
 
-	// chdir();
+	_chdir("../editor");
 
 	return editor_main(argc, argv);
 }

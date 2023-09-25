@@ -9,12 +9,12 @@
 #include "stb_sprintf.h"
 #include "mathh.h"
 
+using Tile = TileMap::Tile;
+
 Game* game;
 World* world;
 
-Game::Game() {
-	game = this;
-}
+Game::Game() { game = this; }
 
 void Game::Init() {
 	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
@@ -150,12 +150,12 @@ void Game::Draw(float delta) {
 				float y = mouse_y + world->camera_y;
 				int tile_x = (int)x / 16;
 				int tile_y = (int)y / 16;
-				tile_x = clamp(tile_x, 0, world->level_width  - 1);
-				tile_y = clamp(tile_y, 0, world->level_height - 1);
+				tile_x = clamp(tile_x, 0, world->tilemap.width  - 1);
+				tile_y = clamp(tile_y, 0, world->tilemap.height - 1);
 
-				Tile tile = world->get_tile(tile_x, tile_y);
-				uint8_t* height = world->get_height(tile.index);
-				float angle = world->get_angle(tile.index);
+				Tile tile = world->tilemap.GetTileA(tile_x, tile_y);
+				uint8_t* height = world->tileset.GetTileHeight(tile.index);
+				float angle = world->tileset.GetTileAngle(tile.index);
 
 				char buf[200];
 				stb_snprintf(buf,
