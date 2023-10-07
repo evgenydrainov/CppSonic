@@ -14,7 +14,7 @@ static T max(T a, T b) {
 
 template <typename T>
 static T clamp(T x, T _min, T _max) {
-	return min(max(x, _min), _max);
+	return max(min(x, _max), _min);
 }
 
 template <typename T>

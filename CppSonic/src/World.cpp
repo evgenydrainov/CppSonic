@@ -39,6 +39,16 @@ void World::Init() {
 	camera_x = player.x - float(GAME_W) / 2.0f;
 	camera_y = player.y - float(GAME_H) / 2.0f;
 #endif
+
+	anim_idle.texture = IMG_LoadTexture(game->renderer, "anim/anim_idle.png");
+	anim_idle.frame_count = 1;
+	anim_walk.texture = IMG_LoadTexture(game->renderer, "anim/anim_walk.png");
+	anim_walk.frame_count = 6;
+	anim_run.texture = IMG_LoadTexture(game->renderer, "anim/anim_run.png");
+	anim_run.frame_count = 4;
+
+	player.anim = &anim_idle;
+	player.next_anim = &anim_idle;
 }
 
 void World::Quit() {}
@@ -598,6 +608,7 @@ void World::Update(float delta) {
 				player.xspeed -= PLAYER_JUMP_FORCE * dsin(player.ground_angle);
 				player.yspeed -= PLAYER_JUMP_FORCE * dcos(player.ground_angle);
 				player.state = PlayerState::AIR;
+				player.ground_angle = 0.0f;
 			}
 
 			// 5. Update Ground Speed based on directional input and apply friction/deceleration.
@@ -629,6 +640,20 @@ void World::Update(float delta) {
 
 			// 13. Grounded Ground Sensor collision occurs.
 			player_ground_sensor_collision();
+
+			if (player.ground_speed == 0.0f) {
+				player.next_anim = &anim_idle;
+				player.frame_duration = 1;
+			} else {
+				if (fabsf(player.ground_speed) >= PLAYER_TOP_SPEED) {
+					player.next_anim = &anim_run;
+				} else {
+					player.next_anim = &anim_walk;
+				}
+				player.frame_duration = (int) max(0.0f, 8.0f - fabsf(player.ground_speed));
+
+				player.facing = sign_int(player.ground_speed);
+			}
 			break;
 		}
 
@@ -670,6 +695,22 @@ void World::Update(float delta) {
 			// 11. All air collision checks occur here.
 			player_ground_sensor_collision();
 			break;
+		}
+	}
+
+	// animate player
+	if (player.anim != player.next_anim) {
+		player.anim = player.next_anim;
+		player.frame_timer = player.frame_duration;
+		player.frame_index = 0;
+	} else {
+		if (player.frame_timer > 0) {
+			player.frame_timer--;
+		} else {
+			player.frame_index++;
+			if (player.frame_index >= player.anim->frame_count) player.frame_index = 0;
+
+			player.frame_timer = player.frame_duration;
 		}
 	}
 
@@ -761,6 +802,24 @@ void World::Draw(float delta) {
 				}
 			}
 		}
+	}
+
+	// draw player
+	{
+		SDL_Rect src = {
+			player.frame_index * 66,
+			0,
+			66,
+			66
+		};
+		SDL_Rect dest = {
+			int(player.x) - int(camera_x) - 33,
+			int(player.y) - int(camera_y) - 33,
+			66,
+			66
+		};
+		SDL_RendererFlip flip = (player.facing == 1) ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
+		SDL_RenderCopyEx(game->renderer, player.anim->texture, &src, &dest, -roundf(player.ground_angle / 45.0f) * 45.0f, nullptr, flip);
 	}
 
 	// draw player hitbox

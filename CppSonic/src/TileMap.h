@@ -1,12 +1,12 @@
 #pragma once
 
-#include <stddef.h>
+#include <stdint.h>
 #include <vector>
 
 class TileMap {
 public:
 	struct Tile {
-		size_t index;
+		uint32_t index;
 		bool hflip;
 		bool vflip;
 		bool top_solid;
@@ -17,21 +17,21 @@ public:
 
 	Tile GetTileA(int tile_x, int tile_y) {
 		if (0 <= tile_x && tile_x < width && 0 <= tile_y && tile_y < height) {
-			size_t id = (size_t) (tile_x + tile_y * width);
-			return tiles_a[id];
+			uint32_t index = tile_x + tile_y * width;
+			return tiles_a[index];
 		}
 		return {};
 	}
 
 	Tile GetTileB(int tile_x, int tile_y) {
 		if (0 <= tile_x && tile_x < width && 0 <= tile_y && tile_y < height) {
-			size_t id = (size_t) (tile_x + tile_y * width);
-			return tiles_b[id];
+			uint32_t index = tile_x + tile_y * width;
+			return tiles_b[index];
 		}
 		return {};
 	}
 
-	size_t TileCount() { return tiles_a.size(); }
+	uint32_t TileCount() { return tiles_a.size(); }
 
 	void Clear() {
 		tiles_a.clear();

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Objects.h"
 #include "TileSet.h"
 #include "TileMap.h"
 
@@ -11,6 +10,13 @@ enum {
 	INPUT_DOWN  = 1 << 3,
 	INPUT_JUMP  = 1 << 4
 };
+
+struct Animation {
+	SDL_Texture* texture;
+	int frame_count;
+};
+
+#include "Objects.h"
 
 class World {
 public:
@@ -34,6 +40,10 @@ public:
 
 	TileSet tileset;
 	TileMap tilemap;
+
+	Animation anim_idle = {};
+	Animation anim_walk = {};
+	Animation anim_run = {};
 
 	int target_w = 0;
 	int target_h = 0;

@@ -14,38 +14,38 @@ public:
 
 	~TileSet() { Clear(); }
 
-	Tile GetTile(size_t tile_index) {
+	Tile GetTile(uint32_t tile_index) {
 		if (tile_index < tiles.size()) {
 			return tiles[tile_index];
 		}
 		return {};
 	}
 
-	uint8_t* GetTileHeight(size_t tile_index) {
+	uint8_t* GetTileHeight(uint32_t tile_index) {
 		if (tile_index < tiles.size()) {
 			return tiles[tile_index].height;
 		}
 		return height_stub;
 	}
 
-	uint8_t* GetTileWidth(size_t tile_index) {
+	uint8_t* GetTileWidth(uint32_t tile_index) {
 		if (tile_index < tiles.size()) {
 			return tiles[tile_index].width;
 		}
 		return height_stub;
 	}
 
-	float GetTileAngle(size_t tile_index) {
+	float GetTileAngle(uint32_t tile_index) {
 		if (tile_index < tiles.size()) {
 			return tiles[tile_index].angle;
 		}
 		return 0.0f;
 	}
 
-	SDL_Rect GetTextureSrcRect(size_t tile_index) {
+	SDL_Rect GetTextureSrcRect(uint32_t tile_index) {
 		if (tile_index < tiles.size()) {
-			int tile_x = int(tile_index) % 16;
-			int tile_y = int(tile_index) / 16;
+			int tile_x = int(tile_index) % tiles_in_row;
+			int tile_y = int(tile_index) / tiles_in_row;
 			return {tile_x * 16, tile_y * 16, 16, 16};
 		}
 		return {0, 0, 16, 16};
@@ -75,4 +75,5 @@ public:
 	SDL_Texture* texture        = nullptr;
 	SDL_Texture* height_texture = nullptr;
 	SDL_Texture* width_texture  = nullptr;
+	int tiles_in_row = 16;
 };

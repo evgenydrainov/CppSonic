@@ -19,6 +19,12 @@ void TileSet::LoadFromFile(const char* binary_filepath, const char* texture_file
 	}
 
 	if (texture = IMG_LoadTexture(game->renderer, texture_filepath)) {
+		int w;
+		int h;
+		SDL_QueryTexture(texture, nullptr, nullptr, &w, &h);
+
+		tiles_in_row = w / 16;
+
 		GenCollisionTextures();
 	}
 }
@@ -33,26 +39,24 @@ void TileSet::GenCollisionTextures() {
 	SDL_Surface* wsurf = SDL_CreateRGBSurfaceWithFormat(0, texture_w, texture_h, 32, SDL_PIXELFORMAT_ARGB8888);
 	SDL_FillRect(wsurf, nullptr, 0x00000000);
 
-	for (size_t tile_index = 0; tile_index < TileCount(); tile_index++) {
+	for (uint32_t tile_index = 0; tile_index < TileCount(); tile_index++) {
 		uint8_t* height = GetTileHeight(tile_index);
 		uint8_t* width  = GetTileWidth(tile_index);
+		SDL_Rect src = GetTextureSrcRect(tile_index);
 		for (int i = 0; i < 16; i++) {
-			int x = tile_index % 16;
-			int y = tile_index / 16;
-
 			if (height[i] != 0) {
 				if (height[i] <= 0x10) {
 					SDL_Rect line = {
-						x * 16 + i,
-						y * 16 + 16 - height[i],
+						src.x + i,
+						src.y + 16 - height[i],
 						1,
 						height[i]
 					};
 					SDL_FillRect(surf, &line, 0xffffffff);
 				} else if (height[i] >= 0xF0) {
 					SDL_Rect line = {
-						x * 16 + i,
-						y * 16,
+						src.x + i,
+						src.y,
 						1,
 						16 - (height[i] - 0xF0)
 					};
@@ -63,16 +67,16 @@ void TileSet::GenCollisionTextures() {
 			if (width[i] != 0) {
 				if (width[i] <= 0x10) {
 					SDL_Rect line = {
-						x * 16 + 16 - width[i],
-						y * 16 + i,
+						src.x + 16 - width[i],
+						src.y + i,
 						width[i],
 						1
 					};
 					SDL_FillRect(wsurf, &line, 0xffffffff);
 				} else {
 					SDL_Rect line = {
-						x * 16,
-						y * 16 + i,
+						src.x,
+						src.y + i,
 						16 - (width[i] - 0xF0),
 						1
 					};
