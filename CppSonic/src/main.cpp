@@ -3,23 +3,23 @@
 #ifndef EDITOR
 
 int main(int argc, char* argv[]) {
-	Game game;
+	Game game_instance{};
+	game = &game_instance;
 
-	game.Init();
-	game.Run();
-	game.Quit();
+	game->Init();
+	game->Run();
+	game->Quit();
 
 	return 0;
 }
 
 #else
-
 #include <direct.h>
 
 int main(int argc, char* argv[]) {
-	extern int editor_main(int, char**);
+	extern int editor_main(int, char*[]);
 
-	_chdir("../editor");
+	_chdir("../editor/");
 
 	return editor_main(argc, argv);
 }

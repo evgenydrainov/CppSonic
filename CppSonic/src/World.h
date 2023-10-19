@@ -1,7 +1,11 @@
 #pragma once
 
+#include "Objects.h"
+
 #include "TileSet.h"
 #include "TileMap.h"
+
+#define MAX_OBJECTS 1000
 
 enum {
 	INPUT_RIGHT = 1,
@@ -11,53 +15,65 @@ enum {
 	INPUT_JUMP  = 1 << 4
 };
 
-struct Animation {
-	SDL_Texture* texture;
-	int frame_count;
+struct World;
+extern World* world;
+
+struct SensorResult {
+	bool found;
+	int dist;
+	Tile tile;
+	int tile_x;
+	int tile_y;
 };
 
-#include "Objects.h"
+struct World {
+	Player player;
+	Object* objects;
+	int object_count;
+	instance_id next_id;
 
-class World {
-public:
-	using Tile = TileMap::Tile;
+	float camera_x;
+	float camera_y;
 
-	World();
+	uint32_t input;
+	uint32_t input_press;
+	uint32_t input_release;
+
+	TileSet tileset;
+	TileMap tilemap;
+
+	int target_w;
+	int target_h;
+
+	bool debug;
 
 	void Init();
 	void Quit();
 	void Update(float delta);
 	void Draw(float delta);
 
-	Player player = {};
+	Object* CreateObject(ObjType type);
 
-	float camera_x = 0.0f;
-	float camera_y = 0.0f;
+	void UpdatePlayer(Player* p, float delta);
 
-	uint32_t input = 0;
-	uint32_t input_press = 0;
-	uint32_t input_release = 0;
+	void GetGroundSensorsPositions(Player* p, float* sensor_a_x, float* sensor_a_y, float* sensor_b_x, float* sensor_b_y);
+	void GetPushSensorsPositions  (Player* p, float* sensor_e_x, float* sensor_e_y, float* sensor_f_x, float* sensor_f_y);
 
-	TileSet tileset;
-	TileMap tilemap;
+	SensorResult SensorCheckDown (float x, float y, int layer);
+	SensorResult SensorCheckRight(float x, float y, int layer);
+	SensorResult SensorCheckUp   (float x, float y, int layer);
+	SensorResult SensorCheckLeft (float x, float y, int layer);
 
-	Animation anim_idle = {};
-	Animation anim_walk = {};
-	Animation anim_run = {};
+	SensorResult GroundSensorCheck(Player* p, float x, float y);
+	SensorResult PushSensorECheck (Player* p, float x, float y);
+	SensorResult PushSensorFCheck (Player* p, float x, float y);
 
-	int target_w = 0;
-	int target_h = 0;
+	void GroundSensorCollision(Player* p);
+	void PushSensorCollision  (Player* p);
 
-	bool debug = false;
+	bool AreGroundSensorsActive(Player* p);
+	bool IsPushSensorEActive   (Player* p);
+	bool IsPushSensorFActive   (Player* p);
 
-private:
-	void player_get_ground_sensors_positions(float* sensor_a_x, float* sensor_a_y, float* sensor_b_x, float* sensor_b_y);
-	int  ground_sensor_check      (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int  ground_sensor_check_floor(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int  ground_sensor_check_right(float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int  ground_sensor_check_ceil (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	int  ground_sensor_check_left (float x, float y, Tile* out_tile, bool* out_found_tile, int* out_tile_x, int* out_tile_y);
-	void player_ground_sensor_collision();
-
-	friend int editor_main(int, char**);
+	void load_objects(const char* fname);
 };

@@ -1,29 +1,26 @@
 #include "Game.h"
 
-#include <SDL_image.h>
-#include <SDL_ttf.h>
-#include <string.h>
-#include <math.h>
-
 #include "misc.h"
-#include "stb_sprintf.h"
 #include "mathh.h"
+#include "stb_sprintf.h"
 
-using Tile = TileMap::Tile;
+#include <SDL_image.h>
+#include <string.h> // for memset
 
 Game* game;
-World* world;
-
-Game::Game() { game = this; }
 
 void Game::Init() {
 	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
 
-	SDL_Init(SDL_INIT_VIDEO
-			 | SDL_INIT_AUDIO);
+	if (SDL_Init(SDL_INIT_VIDEO
+				 | SDL_INIT_AUDIO) != 0) {
+		char buf[256];
+		stb_snprintf(buf, sizeof(buf), "SDL Couldn't initialize: %s", SDL_GetError());
+		SDL_ShowSimpleMessageBox(0, "ERROR", buf, nullptr);
+		exit(1);
+	}
+
 	IMG_Init(IMG_INIT_PNG);
-	TTF_Init();
-	Mix_Init(0);
 
 	window = SDL_CreateWindow("CppSonic",
 							  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -32,29 +29,30 @@ void Game::Init() {
 
 	renderer = SDL_CreateRenderer(window, -1, 0);
 
+	SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
 	game_texture = SDL_CreateTexture(renderer,
 									 SDL_PIXELFORMAT_ARGB8888,
 									 SDL_TEXTUREACCESS_TARGET,
 									 GAME_W, GAME_H);
 
-	LoadFont(&fnt_CP437, "PerfectDOSVGA437Win.ttf", 16);
+	load_all_assets();
 
-	std::get<0>(state).Init();
+	world = &world_instance;
+	world->Init();
 }
 
 void Game::Quit() {
-	switch (state.index()) {
-		case 0: std::get<0>(state).Quit(); break;
+	switch (state) {
+		case GameState::PLAYING: world->Quit(); break;
 	}
 
-	DestroyFont(&fnt_CP437);
+	free_all_assets();
 
 	SDL_DestroyTexture(game_texture);
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 
-	Mix_Quit();
-	TTF_Quit();
 	IMG_Quit();
 	SDL_Quit();
 }
@@ -70,7 +68,9 @@ void Game::Frame() {
 
 	double frame_end_time = t + (1.0 / (double)GAME_FPS);
 
-	memset(&key_pressed, 0, sizeof(key_pressed));
+	memset(key_pressed, 0, sizeof(key_pressed));
+
+	skip_frame = frame_advance;
 
 	{
 		SDL_Event ev;
@@ -85,6 +85,19 @@ void Game::Frame() {
 					SDL_Scancode scancode = ev.key.keysym.scancode;
 					if (0 <= scancode && scancode < ArrayLength(key_pressed)) {
 						key_pressed[scancode] = true;
+					}
+
+					switch (scancode) {
+						case SDL_SCANCODE_F5: {
+							frame_advance = true;
+							skip_frame = false;
+							break;
+						}
+
+						case SDL_SCANCODE_F6: {
+							frame_advance = false;
+							break;
+						}
 					}
 					break;
 				}
@@ -109,22 +122,33 @@ void Game::Frame() {
 }
 
 void Game::Update(float delta) {
-	switch (state.index()) {
-		case 0: std::get<0>(state).Update(delta); break;
+	switch (state) {
+		case GameState::PLAYING: {
+			if (!skip_frame) {
+				world->Update(delta);
+			}
+
+			if (key_pressed[SDL_SCANCODE_ESCAPE]) {
+				world->debug ^= true;
+			}
+			break;
+		}
 	}
 }
 
 void Game::Draw(float delta) {
+	// draw game to game texture
 	SDL_SetRenderTarget(renderer, game_texture);
 	{
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
 
-		switch (state.index()) {
-			case 0: std::get<0>(state).Draw(delta); break;
+		switch (state) {
+			case GameState::PLAYING: world->Draw(delta); break;
 		}
 	}
 
+	// draw game texture and other stuff to screen
 	SDL_SetRenderTarget(renderer, nullptr);
 	{
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -144,12 +168,12 @@ void Game::Draw(float delta) {
 		int draw_x = 0;
 		int draw_y = 0;
 
-		switch (state.index()) {
-			case (size_t) GameState::PLAYING: {
+		switch (state) {
+			case GameState::PLAYING: {
 				float x = mouse_x + world->camera_x;
 				float y = mouse_y + world->camera_y;
-				int tile_x = (int)x / 16;
-				int tile_y = (int)y / 16;
+				int tile_x = int(x) / 16;
+				int tile_y = int(y) / 16;
 				tile_x = clamp(tile_x, 0, world->tilemap.width  - 1);
 				tile_y = clamp(tile_y, 0, world->tilemap.height - 1);
 
@@ -172,7 +196,7 @@ void Game::Draw(float delta) {
 							 world->player.yspeed,
 							 world->player.ground_speed,
 							 world->player.ground_angle);
-				draw_y = DrawTextShadow(&fnt_CP437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+				draw_y = DrawTextShadow(game->renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
 
 				if (world->debug) {
 					char buf[100];
@@ -188,7 +212,7 @@ void Game::Draw(float delta) {
 								 tile.index,
 								 angle,
 								 tile.hflip, tile.vflip);
-					draw_y = DrawTextShadow(&fnt_CP437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+					draw_y = DrawTextShadow(game->renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
 
 					if (height) {
 						char buf[100];
@@ -197,7 +221,7 @@ void Game::Draw(float delta) {
 									 "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x \n",
 									 height[ 0], height[ 1], height[ 2], height[ 3], height[ 4], height[ 5], height[ 6], height[ 7],
 									 height[ 8], height[ 9], height[10], height[11], height[12], height[13], height[14], height[15]);
-						draw_y = DrawTextShadow(&fnt_CP437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+						draw_y = DrawTextShadow(game->renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
 					}
 				}
 

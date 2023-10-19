@@ -9,17 +9,18 @@
 #include "../../CppSonic/src/stb_sprintf.h"
 #include <math.h>
 #include "../../CppSonic/src/mathh.h"
+#include "../../CppSonic/src/misc.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl2.h"
 #include "imgui/imgui_impl_sdlrenderer2.h"
 #include "imgui/imgui_internal.h"
+#include "IconsFontAwesome4.h"
 
+#include <vector>
 #include <direct.h>
 
 #ifdef EDITOR
-
-using Tile = TileMap::Tile;
 
 int selected_tile = 0;
 float tilemap_zoom = 1;
@@ -30,12 +31,14 @@ int hover_tile_x = 0;
 int hover_tile_y = 0;
 int mouse_dx = 0;
 int mouse_dy = 0;
+bool playing = false;
 
 enum {
 	MODE_TILEMAP,
 	MODE_HEIGHTS,
 	MODE_WIDTHS,
-	MODE_CHUNKS
+	MODE_CHUNKS,
+	MODE_OBJECTS
 };
 
 int mode = MODE_TILEMAP;
@@ -56,14 +59,22 @@ struct {
 	bool show;
 	char tileset_path[256] = "../CppSonic/levels/export/tileset.bin";
 	char tilemap_path[256] = "../CppSonic/levels/export/tilemap.bin";
+	char objects_path[256] = "../CppSonic/levels/export/objects.bin";
 } export_window;
 
 struct {
 	bool show;
-	char tileset_path[256] = "../CppSonic/levels/GHZ1/tileset.bin";
-	char tilemap_path[256] = "../CppSonic/levels/GHZ1/tilemap.bin";
-	char tileset_texture_path[256] = "../CppSonic/levels/GHZ1/tileset.png";
+	char tileset_path[256] = "../CppSonic/levels/export/tileset.bin";
+	char tilemap_path[256] = "../CppSonic/levels/export/tilemap.bin";
+	char tileset_texture_path[256] = "../CppSonic/levels/export/tileset.png";
+	char objects_path[256] = "../CppSonic/levels/export/objects.bin";
 } import_window;
+
+#define X(name) #name,
+static const char* object_type_name[] = {
+	LIST_OF_ALL_OBJ_TYPES
+};
+#undef X
 
 static bool ButtonCentered(const char* label, float alignment = 0.5f) {
 	ImGuiStyle& style = ImGui::GetStyle();
@@ -79,8 +90,8 @@ static bool ButtonCentered(const char* label, float alignment = 0.5f) {
 }
 
 static void import_s1_level() {
-	world->tileset.Clear();
-	world->tilemap.Clear();
+	world->tileset.Destroy();
+	world->tilemap.Destroy();
 
 	std::vector<uint8_t> level_data;
 	std::vector<uint16_t> level_chunk_data;
@@ -170,8 +181,9 @@ static void import_s1_level() {
 
 	world->tilemap.width  = level_width_in_chunks  * 16;
 	world->tilemap.height = level_height_in_chunks * 16;
-	world->tilemap.tiles_a.resize(world->tilemap.width * world->tilemap.height);
-	world->tilemap.tiles_b.resize(world->tilemap.width * world->tilemap.height);
+	world->tilemap.tile_count = world->tilemap.width * world->tilemap.height;
+	world->tilemap.tiles_a = (Tile*) calloc(world->tilemap.tile_count, sizeof(*world->tilemap.tiles_a));
+	world->tilemap.tiles_b = (Tile*) calloc(world->tilemap.tile_count, sizeof(*world->tilemap.tiles_b));
 
 	for (size_t i = 0; i < level_chunk_data.size(); i++) {
 		level_chunk_data[i] = SDL_Swap16(level_chunk_data[i]);
@@ -189,7 +201,10 @@ static void import_s1_level() {
 	world->camera_x = world->player.x - float(GAME_W) / 2.0f;
 	world->camera_y = world->player.y - float(GAME_H) / 2.0f;
 
-	world->tileset.tiles.resize((texture_w / 16) * (texture_h / 16));
+	world->tileset.tile_count = (texture_w / 16) * (texture_h / 16);
+	world->tileset.tile_heights = (uint8_t*) calloc(world->tileset.tile_count, 16 * sizeof(*world->tileset.tile_heights));
+	world->tileset.tile_widths = (uint8_t*) calloc(world->tileset.tile_count, 16 * sizeof(*world->tileset.tile_widths));
+	world->tileset.tile_angles = (float*) calloc(world->tileset.tile_count, sizeof(*world->tileset.tile_angles));
 
 	for (int y = 0; y < world->tilemap.height; y++) {
 		for (int x = 0; x < world->tilemap.width; x++) {
@@ -203,10 +218,6 @@ static void import_s1_level() {
 				continue;
 			}
 
-			// if (loop) {
-			// 	chunk_index++;
-			// }
-
 			uint16_t* tiles = &level_chunk_data[(chunk_index - 1) * 256];
 
 			int tile_in_chunk_x = x % 16;
@@ -219,6 +230,18 @@ static void import_s1_level() {
 			world->tilemap.tiles_a[x + y * world->tilemap.width].vflip = tile & 0b0001'0000'0000'0000;
 			world->tilemap.tiles_a[x + y * world->tilemap.width].top_solid = tile & 0b0010'0000'0000'0000;
 			world->tilemap.tiles_a[x + y * world->tilemap.width].left_right_bottom_solid = tile & 0b0100'0000'0000'0000;
+
+			if (loop) {
+				chunk_index++;
+				tiles = &level_chunk_data[(chunk_index - 1) * 256];
+				tile = tiles[tile_in_chunk_x + tile_in_chunk_y * 16];
+
+				world->tilemap.tiles_b[x + y * world->tilemap.width].index = tile & 0b0000'0011'1111'1111;
+				world->tilemap.tiles_b[x + y * world->tilemap.width].hflip = tile & 0b0000'1000'0000'0000;
+				world->tilemap.tiles_b[x + y * world->tilemap.width].vflip = tile & 0b0001'0000'0000'0000;
+				world->tilemap.tiles_b[x + y * world->tilemap.width].top_solid = tile & 0b0010'0000'0000'0000;
+				world->tilemap.tiles_b[x + y * world->tilemap.width].left_right_bottom_solid = tile & 0b0100'0000'0000'0000;
+			}
 		}
 	}
 
@@ -228,15 +251,15 @@ static void import_s1_level() {
 		uint8_t* width = &collision_array_rot[index * 16];
 
 		for (size_t j = 0; j < 16; j++) {
-			world->tileset.tiles[i].height[j] = height[j];
-			world->tileset.tiles[i].width[j] = width[j];
+			world->tileset.tile_heights[i * 16 + j] = height[j];
+			world->tileset.tile_widths[i * 16 + j] = width[j];
 		}
 
 		uint8_t angle = angle_map[index];
 		if (angle == 0xFF) { // flagged
-			world->tileset.tiles[i].angle = -1.0f;
+			world->tileset.tile_angles[i] = -1.0f;
 		} else {
-			world->tileset.tiles[i].angle = (float(256 - int(angle)) / 256.0f) * 360.0f;
+			world->tileset.tile_angles[i] = (float(256 - int(angle)) / 256.0f) * 360.0f;
 		}
 	}
 
@@ -245,43 +268,74 @@ static void import_s1_level() {
 
 static void export_level() {
 	{
-		SDL_RWops* f = SDL_RWFromFile(export_window.tileset_path, "wb");
+		if (SDL_RWops* f = SDL_RWFromFile(export_window.tileset_path, "wb")) {
+			int tile_count = world->tileset.tile_count;
+			SDL_RWwrite(f, &tile_count, sizeof(tile_count), 1);
 
-		int tile_count = world->tileset.tiles.size();
-		SDL_RWwrite(f, &tile_count, sizeof(tile_count), 1);
+			SDL_RWwrite(f, world->tileset.tile_heights, 16 * sizeof(*world->tileset.tile_heights), tile_count);
+			SDL_RWwrite(f, world->tileset.tile_widths, 16 * sizeof(*world->tileset.tile_widths), tile_count);
+			SDL_RWwrite(f, world->tileset.tile_angles, sizeof(*world->tileset.tile_angles), tile_count);
 
-		SDL_RWwrite(f, world->tileset.tiles.data(), sizeof(*world->tileset.tiles.data()), tile_count);
-
-		SDL_RWclose(f);
+			SDL_RWclose(f);
+		} else {
+			char buf[256];
+			stb_snprintf(buf, sizeof(buf), "%s", SDL_GetError());
+			SDL_ShowSimpleMessageBox(0, "ERROR", buf, nullptr);
+		}
 	}
 
 	{
-		SDL_RWops* f = SDL_RWFromFile(export_window.tilemap_path, "wb");
+		if (SDL_RWops* f = SDL_RWFromFile(export_window.tilemap_path, "wb")) {
+			int width  = world->tilemap.width;
+			int height = world->tilemap.height;
+			SDL_RWwrite(f, &width,  sizeof(width),  1);
+			SDL_RWwrite(f, &height, sizeof(height), 1);
 
-		int width  = world->tilemap.width;
-		int height = world->tilemap.height;
-		SDL_RWwrite(f, &width,  sizeof(width),  1);
-		SDL_RWwrite(f, &height, sizeof(height), 1);
+			float start_x = world->tilemap.start_x;
+			float start_y = world->tilemap.start_y;
+			SDL_RWwrite(f, &start_x, sizeof(start_x), 1);
+			SDL_RWwrite(f, &start_y, sizeof(start_y), 1);
 
-		float start_x = world->tilemap.start_x;
-		float start_y = world->tilemap.start_y;
-		SDL_RWwrite(f, &start_x, sizeof(start_x), 1);
-		SDL_RWwrite(f, &start_y, sizeof(start_y), 1);
+			int tile_count = world->tilemap.tile_count;
+			SDL_RWwrite(f, world->tilemap.tiles_a, sizeof(*world->tilemap.tiles_a), tile_count);
+			SDL_RWwrite(f, world->tilemap.tiles_b, sizeof(*world->tilemap.tiles_b), tile_count);
 
-		SDL_RWwrite(f, world->tilemap.tiles_a.data(), sizeof(*world->tilemap.tiles_a.data()), width * height);
-		SDL_RWwrite(f, world->tilemap.tiles_b.data(), sizeof(*world->tilemap.tiles_b.data()), width * height);
+			SDL_RWclose(f);
+		} else {
+			char buf[256];
+			stb_snprintf(buf, sizeof(buf), "%s", SDL_GetError());
+			SDL_ShowSimpleMessageBox(0, "ERROR", buf, nullptr);
+		}
+	}
 
-		SDL_RWclose(f);
+	{
+		if (SDL_RWops* f = SDL_RWFromFile(export_window.objects_path, "wb")) {
+			int object_count = world->object_count;
+			SDL_RWwrite(f, &object_count, sizeof(object_count), 1);
+
+			for (int i = 0; i < world->object_count; i++) {
+				Object o = world->objects[i];
+				o.id = -1;
+				SDL_RWwrite(f, &o, sizeof(o), 1);
+			}
+
+			SDL_RWclose(f);
+		} else {
+			char buf[256];
+			stb_snprintf(buf, sizeof(buf), "%s", SDL_GetError());
+			SDL_ShowSimpleMessageBox(0, "ERROR", buf, nullptr);
+		}
 	}
 }
 
 static void import_level() {
-	world->tileset.Clear();
-	world->tilemap.Clear();
+	world->tileset.Destroy();
+	world->tilemap.Destroy();
 
 	world->tileset.LoadFromFile(import_window.tileset_path,
 								import_window.tileset_texture_path);
 	world->tilemap.LoadFromFile(import_window.tilemap_path);
+	world->load_objects(import_window.objects_path);
 
 	world->player.x = world->tilemap.start_x;
 	world->player.y = world->tilemap.start_y;
@@ -290,6 +344,7 @@ static void import_level() {
 	world->camera_y = world->player.y - float(GAME_H) / 2.0f;
 }
 
+#if 0
 #include <sstream>
 #include <fstream>
 
@@ -333,23 +388,241 @@ static void import_gms() {
 
 	world->tileset.GenCollisionTextures();
 }
+#else
+static void import_gms() {}
+#endif
+
+static SDL_Texture* game_texture;
+static ImFont* fnt_droid_sans;
+static ImFont* fnt_CP437;
+static int mouse_wheel_y;
+static Uint8 mouse_button_pressed;
+
+static void show_tilemap_window() {
+	if (ImGui::Begin("Tilemap")) {
+		ImVec2 size = ImGui::GetContentRegionAvail();
+
+		// resize game texture
+		{
+			int w;
+			int h;
+			SDL_QueryTexture(game_texture, nullptr, nullptr, &w, &h);
+			if (w != size.x || h != size.y) {
+				SDL_DestroyTexture(game_texture);
+				game_texture = SDL_CreateTexture(game->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, size.x, size.y);
+			}
+		}
+
+		ImVec2 cursor = ImGui::GetCursorScreenPos();
+		ImGui::Image(game_texture, size);
+
+		if (ImGui::IsWindowFocused()) {
+			// pan
+			Uint32 mouse = SDL_GetMouseState(nullptr, nullptr);
+			if (mouse & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
+				world->camera_x -= (float)mouse_dx / tilemap_zoom;
+				world->camera_y -= (float)mouse_dy / tilemap_zoom;
+			}
+		}
+
+		if (ImGui::IsWindowHovered()) {
+			// zoom
+			if (mouse_wheel_y != 0) {
+				float camera_center_x = world->camera_x + size.x / tilemap_zoom / 2.0f;
+				float camera_center_y = world->camera_y + size.y / tilemap_zoom / 2.0f;
+
+				if (mouse_wheel_y < 0) {
+					tilemap_zoom /= 1.5f;
+				} else {
+					tilemap_zoom *= 1.5f;
+				}
+				tilemap_zoom = clamp(tilemap_zoom, 0.5f, 10.0f);
+
+				world->camera_x = camera_center_x - size.x / tilemap_zoom / 2.0f;
+				world->camera_y = camera_center_y - size.y / tilemap_zoom / 2.0f;
+			}
+
+			// hover tile
+			float mouse_x = (ImGui::GetMousePos().x - cursor.x) / tilemap_zoom + world->camera_x;
+			float mouse_y = (ImGui::GetMousePos().y - cursor.y) / tilemap_zoom + world->camera_y;
+
+			hover_tile_x = int(mouse_x) / 16;
+			hover_tile_y = int(mouse_y) / 16;
+
+			hover_tile_x = clamp(hover_tile_x, 0, world->tilemap.width  - 1);
+			hover_tile_y = clamp(hover_tile_y, 0, world->tilemap.height - 1);
+
+			game->mouse_x = mouse_x;
+			game->mouse_y = mouse_y;
+
+			// draw tiles
+			if (mode == MODE_TILEMAP) {
+				Uint32 mouse = SDL_GetMouseState(nullptr, nullptr);
+				if (mouse & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+					world->tilemap.tiles_a[hover_tile_x + hover_tile_y * world->tilemap.width] = {};
+					world->tilemap.tiles_a[hover_tile_x + hover_tile_y * world->tilemap.width].index = selected_tile;
+					world->tilemap.tiles_a[hover_tile_x + hover_tile_y * world->tilemap.width].top_solid = true;
+					world->tilemap.tiles_a[hover_tile_x + hover_tile_y * world->tilemap.width].left_right_bottom_solid = true;
+				}
+			}
+		}
+
+		{
+			ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0.5));
+			ImGui::SetNextWindowPos(ImVec2(cursor.x + size.x - 10, cursor.y + size.y - 10), 0, ImVec2(1, 1));
+			if (ImGui::Begin("tilemap info overlay",
+							 nullptr,
+							 ImGuiWindowFlags_NoDecoration
+							 | ImGuiWindowFlags_NoSavedSettings
+							 | ImGuiWindowFlags_NoInputs
+							 | ImGuiWindowFlags_AlwaysAutoResize)) {
+				ImGui::PushFont(fnt_CP437);
+
+				// if (mode == MODE_TILEMAP) {
+					ImGui::Text("Tile X: %d", hover_tile_x);
+					ImGui::Text("Tile Y: %d", hover_tile_y);
+					Tile tile = world->tilemap.GetTileA(hover_tile_x, hover_tile_y);
+					ImGui::Text("Tile ID: %d", tile.index);
+					ImGui::Text("Tile HFlip: %d", tile.hflip);
+					ImGui::Text("Tile VFlip: %d", tile.vflip);
+					ImGui::Text("Tile Top Solid: %d", tile.top_solid);
+					ImGui::Text("Tile Left/Right/Bottom Solid: %d", tile.left_right_bottom_solid);
+				// } else if (mode == MODE_OBJECTS) {
+				// 	ImGui::Text("Mouse X: %f", game->mouse_x);
+				// 	ImGui::Text("Mouse Y: %f", game->mouse_y);
+				// }
+
+				ImGui::PopFont();
+			}
+			ImGui::End();
+			ImGui::PopStyleColor();
+		}
+	}
+	ImGui::End();
+}
+
+static void show_tileset_window() {
+	if (ImGui::Begin("Tileset")) {
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 1));
+
+		ImVec2 cursor = ImGui::GetCursorScreenPos();
+
+		for (int tile_index = 0; tile_index < world->tileset.tile_count; tile_index++) {
+			SDL_Rect src = world->tileset.GetTextureSrcRect(tile_index);
+
+			ImVec2 uv0(src.x, src.y);
+			ImVec2 uv1(src.x + src.w, src.y + src.h);
+
+			int w;
+			int h;
+			SDL_QueryTexture(world->tileset.texture, nullptr, nullptr, &w, &h);
+
+			uv0.x /= (float) w;
+			uv0.y /= (float) h;
+
+			uv1.x /= (float) w;
+			uv1.y /= (float) h;
+
+			if (tile_index == selected_tile) {
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 1, 1, 1));
+			} else {
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 1));
+			}
+
+			char buf[50];
+			stb_snprintf(buf, sizeof(buf), "tile button %d", tile_index);
+			if (ImGui::ImageButton(buf, world->tileset.texture, ImVec2(32, 32), uv0, uv1, ImVec4(0, 0, 0, 1))) {
+				selected_tile = tile_index;
+			}
+
+			ImGui::PopStyleColor();
+
+			if (ImGui::GetItemRectMin().x - cursor.x + 32 * 2 < ImGui::GetContentRegionAvail().x) {
+				ImGui::SameLine();
+			}
+		}
+
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar(2);
+	}
+	ImGui::End();
+}
+
+static void show_objects_window() {
+	if (ImGui::Begin("Objects")) {
+		if (ImGui::Button(ICON_FA_PLUS)) {
+			world->CreateObject({});
+		}
+		ImGui::SameLine();
+		if (ImGui::Button(ICON_FA_MINUS)) {
+			world->object_count--;
+			if (world->object_count < 0) world->object_count = 0;
+		}
+		ImGui::SameLine();
+		ImGui::Text("%d/%d", world->object_count, MAX_OBJECTS);
+
+		for (int i = 0; i < world->object_count; i++) {
+			ImGui::PushID(i);
+
+			Object* o = world->objects + i;
+
+			ImGui::Text("Index: %d", i);
+			ImGui::Text("ID: %d", o->id);
+			ImGui::Text("Type: %d (%s)", o->type, object_type_name[(int)o->type]);
+			ImGui::Text("Flags: %u", o->flags);
+			{
+				int x = o->x / 16.0f;
+				int y = o->y / 16.0f;
+				bool touched = false;
+				touched |= ImGui::DragInt("x", &x, 0.05f, 0, world->tilemap.width  - 1);
+				touched |= ImGui::DragInt("y", &y, 0.05f, 0, world->tilemap.height - 1);
+				if (touched) {
+					o->x = x * 16;
+					o->y = y * 16;
+				}
+			}
+
+			switch (o->type) {
+				case ObjType::VERTICAL_LAYER_SWITCHER: {
+					ImGui::InputFloat("Radius", &o->radius);
+					ImGui::InputInt("Layer 1", &o->layer_1);
+					ImGui::InputInt("Layer 2", &o->layer_2);
+					{
+						bool on = (o->flags & FLAG_LAYER_SWITCHER_GROUNDED_ONLY) != 0;
+						ImGui::Checkbox("Grounded Only", &on);
+						if (on) o->flags |= FLAG_LAYER_SWITCHER_GROUNDED_ONLY;
+						else o->flags &= ~FLAG_LAYER_SWITCHER_GROUNDED_ONLY;
+					}
+					break;
+				}
+			}
+
+			ImGui::Separator();
+
+			ImGui::PopID();
+		}
+	}
+	ImGui::End();
+}
 
 int editor_main(int argc, char* argv[]) {
-	_chdir("../CppSonic");
+	_chdir("../CppSonic/");
 
-	Game game_instance;
+	Game game_instance{};
+	game = &game_instance;
+
 	game->Init();
 
-	_chdir("../editor");
+	_chdir("../editor/");
 
 	SDL_SetWindowSize(game->window, window_w, window_h);
 	SDL_SetWindowPosition(game->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 
 	SDL_MaximizeWindow(game->window);
 
-	SDL_RenderSetVSync(game->renderer, 1);
-
-	SDL_Texture* game_texture = SDL_CreateTexture(game->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, window_w, window_h);
+	game_texture = SDL_CreateTexture(game->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, window_w, window_h);
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -368,15 +641,29 @@ int editor_main(int argc, char* argv[]) {
 	ImGui_ImplSDLRenderer2_Init(game->renderer);
 
 	// Load Fonts
-	ImFont* fnt_droid_sans = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 20);
-	ImFont* fnt_CP437 = io.Fonts->AddFontFromFileTTF("PerfectDOSVGA437Win.ttf", 16);
+	fnt_droid_sans = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 20);
+
+	{
+		ImFontConfig config;
+		config.MergeMode = true;
+		config.GlyphMinAdvanceX = 14; // Use if you want to make the icon monospaced
+		static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+		io.Fonts->AddFontFromFileTTF(FONT_ICON_FILE_NAME_FA, 14, &config, icon_ranges);
+	}
+
+	fnt_CP437 = io.Fonts->AddFontFromFileTTF("PerfectDOSVGA437Win.ttf", 16);
 
 	bool show_demo_window = false;
 
 	bool quit = false;
 	while (!quit) {
-		int mouse_wheel_y = 0;
-		Uint8 mouse_button_pressed = 0;
+		double t = GetTime();
+		double frame_end_time = t + (1.0 / (double)GAME_FPS);
+		memset(game->key_pressed, 0, sizeof(game->key_pressed));
+		game->skip_frame = game->frame_advance;
+
+		mouse_wheel_y = 0;
+		mouse_button_pressed = 0;
 
 		{
 			SDL_Event ev;
@@ -395,6 +682,25 @@ int editor_main(int argc, char* argv[]) {
 					case SDL_MOUSEBUTTONDOWN:
 						mouse_button_pressed = ev.button.button;
 						break;
+
+					case SDL_KEYDOWN: {
+						SDL_Scancode scancode = ev.key.keysym.scancode;
+						if (0 <= scancode && scancode < ArrayLength(game->key_pressed)) {
+							game->key_pressed[scancode] = true;
+						}
+						switch (scancode) {
+							case SDL_SCANCODE_F5: {
+								game->frame_advance = true;
+								game->skip_frame = false;
+								break;
+							}
+							case SDL_SCANCODE_F6: {
+								game->frame_advance = false;
+								break;
+							}
+						}
+						break;
+					}
 				}
 			}
 		}
@@ -406,6 +712,15 @@ int editor_main(int argc, char* argv[]) {
 			SDL_GetWindowSize(game->window, &window_w, &window_h);
 
 			SDL_GetRelativeMouseState(&mouse_dx, &mouse_dy);
+
+			if (playing) {
+				if (!game->skip_frame) {
+					world->Update(delta);
+				}
+				if (game->key_pressed[SDL_SCANCODE_ESCAPE]) {
+					world->debug ^= true;
+				}
+			}
 		}
 
 		// GUI
@@ -461,6 +776,17 @@ int editor_main(int argc, char* argv[]) {
 				if (ImGui::MenuItem("Heights", nullptr, mode == MODE_HEIGHTS)) mode = MODE_HEIGHTS;
 				if (ImGui::MenuItem("Widths",  nullptr, mode == MODE_WIDTHS))  mode = MODE_WIDTHS;
 				if (ImGui::MenuItem("Chunks",  nullptr, mode == MODE_CHUNKS))  mode = MODE_CHUNKS;
+				if (ImGui::MenuItem("Objects", nullptr, mode == MODE_OBJECTS)) mode = MODE_OBJECTS;
+
+				ImGui::Separator();
+				ImGui::Separator();
+				ImGui::Separator();
+
+				if (playing) {
+					if (ImGui::Button(ICON_FA_PAUSE)) playing = false;
+				} else {
+					if (ImGui::Button(ICON_FA_PLAY)) playing = true;
+				}
 
 				ImGui::EndMainMenuBar();
 			}
@@ -504,6 +830,7 @@ int editor_main(int argc, char* argv[]) {
 								 | ImGuiWindowFlags_NoSavedSettings)) {
 					ImGui::InputText("tileset path", export_window.tileset_path, sizeof(export_window.tileset_path));
 					ImGui::InputText("tilemap path", export_window.tilemap_path, sizeof(export_window.tilemap_path));
+					ImGui::InputText("objects path", export_window.objects_path, sizeof(export_window.objects_path));
 
 					if (ButtonCentered("Export")) {
 						export_level();
@@ -525,6 +852,7 @@ int editor_main(int argc, char* argv[]) {
 					ImGui::InputText("tileset path", import_window.tileset_path, sizeof(import_window.tileset_path));
 					ImGui::InputText("tilemap path", import_window.tilemap_path, sizeof(import_window.tilemap_path));
 					ImGui::InputText("tileset texture path", import_window.tileset_texture_path, sizeof(import_window.tileset_texture_path));
+					ImGui::InputText("objects path", import_window.objects_path, sizeof(import_window.objects_path));
 
 					if (ButtonCentered("Import")) {
 						import_level();
@@ -536,130 +864,9 @@ int editor_main(int argc, char* argv[]) {
 
 			switch (mode) {
 				case MODE_TILEMAP: {
-					if (ImGui::Begin("Tilemap")) {
-						ImVec2 size = ImGui::GetContentRegionAvail();
-						ImVec2 cursor = ImGui::GetCursorScreenPos();
-						ImGui::Image(game_texture, size);
+					show_tilemap_window();
 
-						if (ImGui::IsWindowFocused()) {
-							// pan
-							Uint32 mouse = SDL_GetMouseState(nullptr, nullptr);
-							if (mouse & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
-								world->camera_x -= (float)mouse_dx / tilemap_zoom;
-								world->camera_y -= (float)mouse_dy / tilemap_zoom;
-							}
-						}
-
-						if (ImGui::IsWindowHovered()) {
-							// zoom
-							if (mouse_wheel_y != 0) {
-								float camera_center_x = world->camera_x + size.x / tilemap_zoom / 2.0f;
-								float camera_center_y = world->camera_y + size.y / tilemap_zoom / 2.0f;
-
-								if (mouse_wheel_y < 0) {
-									tilemap_zoom /= 1.5f;
-								} else {
-									tilemap_zoom *= 1.5f;
-								}
-								tilemap_zoom = clamp(tilemap_zoom, 0.5f, 10.0f);
-
-								world->camera_x = camera_center_x - size.x / tilemap_zoom / 2.0f;
-								world->camera_y = camera_center_y - size.y / tilemap_zoom / 2.0f;
-							}
-
-							// hover tile
-							float mouse_x = (ImGui::GetMousePos().x - cursor.x) / tilemap_zoom + world->camera_x;
-							float mouse_y = (ImGui::GetMousePos().y - cursor.y) / tilemap_zoom + world->camera_y;
-
-							hover_tile_x = int(mouse_x) / 16;
-							hover_tile_y = int(mouse_y) / 16;
-
-							hover_tile_x = clamp(hover_tile_x, 0, world->tilemap.width  - 1);
-							hover_tile_y = clamp(hover_tile_y, 0, world->tilemap.height - 1);
-						}
-
-						// resize game texture
-						{
-							int w;
-							int h;
-							SDL_QueryTexture(game_texture, nullptr, nullptr, &w, &h);
-							if (w != size.x || h != size.y) {
-								SDL_DestroyTexture(game_texture);
-								game_texture = SDL_CreateTexture(game->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, size.x, size.y);
-							}
-						}
-
-						ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0.5));
-						ImGui::SetNextWindowPos(ImVec2(cursor.x + size.x - 10, cursor.y + size.y - 10), 0, ImVec2(1, 1));
-						if (ImGui::Begin("tilemap info overlay",
-										 nullptr,
-										 ImGuiWindowFlags_NoDecoration
-										 | ImGuiWindowFlags_NoSavedSettings
-										 | ImGuiWindowFlags_NoInputs)) {
-							ImGui::PushFont(fnt_CP437);
-
-							ImGui::Text("Tile X: %d", hover_tile_x);
-							ImGui::Text("Tile Y: %d", hover_tile_y);
-							Tile tile = world->tilemap.GetTileA(hover_tile_x, hover_tile_y);
-							ImGui::Text("Tile ID: %d", tile.index);
-							ImGui::Text("Tile HFlip: %d", tile.hflip);
-							ImGui::Text("Tile VFlip: %d", tile.vflip);
-							ImGui::Text("Tile Top Solid: %d", tile.top_solid);
-							ImGui::Text("Tile Left/Right/Bottom Solid: %d", tile.left_right_bottom_solid);
-
-							ImGui::PopFont();
-						}
-						ImGui::End();
-						ImGui::PopStyleColor();
-					}
-					ImGui::End();
-
-					if (ImGui::Begin("Tileset")) {
-						ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-						ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
-						ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 1));
-
-						ImVec2 cursor = ImGui::GetCursorScreenPos();
-
-						for (uint32_t tile_index = 0; tile_index < world->tileset.TileCount(); tile_index++) {
-							SDL_Rect src = world->tileset.GetTextureSrcRect(tile_index);
-
-							ImVec2 uv0(src.x, src.y);
-							ImVec2 uv1(src.x + src.w, src.y + src.h);
-
-							int w;
-							int h;
-							SDL_QueryTexture(world->tileset.texture, nullptr, nullptr, &w, &h);
-
-							uv0.x /= (float) w;
-							uv0.y /= (float) h;
-
-							uv1.x /= (float) w;
-							uv1.y /= (float) h;
-
-							if (tile_index == selected_tile) {
-								ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 1, 1, 1));
-							} else {
-								ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 1));
-							}
-
-							char buf[50];
-							stb_snprintf(buf, sizeof(buf), "tile button %d", tile_index);
-							if (ImGui::ImageButton(buf, world->tileset.texture, ImVec2(32, 32), uv0, uv1, ImVec4(0, 0, 0, 1))) {
-								selected_tile = tile_index;
-							}
-
-							ImGui::PopStyleColor();
-
-							if (ImGui::GetItemRectMin().x - cursor.x + 32 * 2 < ImGui::GetContentRegionAvail().x) {
-								ImGui::SameLine();
-							}
-						}
-
-						ImGui::PopStyleColor();
-						ImGui::PopStyleVar(2);
-					}
-					ImGui::End();
+					show_tileset_window();
 
 					// if (ImGui::Begin("Info")) {
 					// 	ImGui::Text("Hold \"3\" to show tile heights");
@@ -686,17 +893,22 @@ int editor_main(int argc, char* argv[]) {
 
 					break;
 				}
+
+				case MODE_OBJECTS: {
+					show_tilemap_window();
+
+					show_objects_window();
+					break;
+				}
 			}
 
 			if (show_demo_window) {
 				ImGui::ShowDemoWindow(&show_demo_window);
 			}
 
-			{
-				// also focus windows with middle and right click
-				if (mouse_button_pressed == SDL_BUTTON_MIDDLE || mouse_button_pressed == SDL_BUTTON_RIGHT) {
-					ImGui::FocusWindow(ImGui::GetCurrentContext()->HoveredWindow);
-				}
+			// focus windows with middle and right click
+			if (mouse_button_pressed == SDL_BUTTON_MIDDLE || mouse_button_pressed == SDL_BUTTON_RIGHT) {
+				ImGui::FocusWindow(ImGui::GetCurrentContext()->HoveredWindow);
 			}
 		}
 
@@ -723,7 +935,7 @@ int editor_main(int argc, char* argv[]) {
 					world->Draw(delta);
 
 					// draw hovered tile
-					{
+					if (mode == MODE_TILEMAP) {
 						SDL_Rect src = world->tileset.GetTextureSrcRect(selected_tile);
 						SDL_Rect dest = {
 							hover_tile_x * 16 - int(world->camera_x),
@@ -753,6 +965,15 @@ int editor_main(int argc, char* argv[]) {
 
 			SDL_RenderPresent(game->renderer);
 		}
+
+#ifndef __EMSCRIPTEN__
+		t = GetTime();
+		double time_left = frame_end_time - t;
+		if (time_left > 0.0) {
+			SDL_Delay((Uint32) (time_left * (0.95 * 1000.0)));
+			while (GetTime() < frame_end_time) {}
+		}
+#endif
 	}
 
 	// Cleanup

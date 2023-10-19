@@ -31,18 +31,18 @@ enum {
 	VALIGN_BOTTOM
 };
 
-SDL_Point DrawText(Font* font, const char* text,
+// Expects SDL_ttf (and SDL) to be initialized.
+void LoadFontFromFileTTF(Font* font, const char* fname, int ptsize, SDL_Renderer* renderer);
+void DestroyFont(Font* font);
+
+SDL_Point DrawText(SDL_Renderer* renderer, Font* font, const char* text,
 				   int x, int y,
-				   int halign = HALIGN_LEFT, int valign = VALIGN_TOP,
+				   int halign = 0, int valign = 0,
 				   SDL_Color color = {255, 255, 255, 255});
 
-SDL_Point DrawTextShadow(Font* font, const char* text,
+SDL_Point DrawTextShadow(SDL_Renderer* renderer, Font* font, const char* text,
 						 int x, int y,
-						 int halign = HALIGN_LEFT, int valign = VALIGN_TOP,
+						 int halign = 0, int valign = 0,
 						 SDL_Color color = {255, 255, 255, 255});
 
 SDL_Point MeasureText(Font* font, const char* text);
-
-void LoadFont(Font* font, const char* fname, int ptsize);
-
-void DestroyFont(Font* font);

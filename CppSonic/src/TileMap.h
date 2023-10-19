@@ -1,23 +1,28 @@
 #pragma once
 
-#include <stdint.h>
-#include <vector>
+struct Tile {
+	int index;
+	bool hflip : 1;
+	bool vflip : 1;
+	bool top_solid : 1;
+	bool left_right_bottom_solid : 1;
+};
 
-class TileMap {
-public:
-	struct Tile {
-		uint32_t index;
-		bool hflip;
-		bool vflip;
-		bool top_solid;
-		bool left_right_bottom_solid;
-	};
+struct TileMap {
+	Tile* tiles_a;
+	Tile* tiles_b;
+	int tile_count;
+	int width;
+	int height;
+	float start_x;
+	float start_y;
 
-	~TileMap() { Clear(); }
+	void LoadFromFile(const char* fname);
+	void Destroy();
 
 	Tile GetTileA(int tile_x, int tile_y) {
 		if (0 <= tile_x && tile_x < width && 0 <= tile_y && tile_y < height) {
-			uint32_t index = tile_x + tile_y * width;
+			int index = tile_x + tile_y * width;
 			return tiles_a[index];
 		}
 		return {};
@@ -25,25 +30,18 @@ public:
 
 	Tile GetTileB(int tile_x, int tile_y) {
 		if (0 <= tile_x && tile_x < width && 0 <= tile_y && tile_y < height) {
-			uint32_t index = tile_x + tile_y * width;
+			int index = tile_x + tile_y * width;
 			return tiles_b[index];
 		}
 		return {};
 	}
 
-	uint32_t TileCount() { return tiles_a.size(); }
-
-	void Clear() {
-		tiles_a.clear();
-		tiles_b.clear();
+	Tile GetTile(int tile_x, int tile_y, int layer) {
+		if (layer == 0) {
+			return GetTileA(tile_x, tile_y);
+		} else if (layer == 1) {
+			return GetTileB(tile_x, tile_y);
+		}
+		return {};
 	}
-
-	void LoadFromFile(const char* fname);
-
-	std::vector<Tile> tiles_a;
-	std::vector<Tile> tiles_b;
-	int width  = 0;
-	int height = 0;
-	float start_x = 0.0f;
-	float start_y = 0.0f;
 };

@@ -3,30 +3,93 @@
 #include "Game.h"
 
 #include <SDL_image.h>
+#include <stdlib.h> // for calloc, exit
 
 void TileSet::LoadFromFile(const char* binary_filepath, const char* texture_filepath) {
-	Clear();
+	auto load_binary = [&]() -> void {
+		SDL_RWops* f = SDL_RWFromFile(binary_filepath, "rb");
 
-	if (SDL_RWops* f = SDL_RWFromFile(binary_filepath, "rb")) {
+		if (!f) {
+			SDL_ShowSimpleMessageBox(0, "ERROR", "Couldn't open tileset.", nullptr);
+			return;
+		}
+
 		int tile_count;
 		SDL_RWread(f, &tile_count, sizeof(tile_count), 1);
 
-		tiles.resize(tile_count);
+		if (tile_count <= 0) {
+			SDL_ShowSimpleMessageBox(0, "ERROR", "Invalid tileset size.", nullptr);
+			SDL_RWclose(f);
+			return;
+		}
 
-		SDL_RWread(f, tiles.data(), sizeof(*tiles.data()), tile_count);
+		this->tile_count = tile_count;
+		tile_heights = (uint8_t*) calloc(tile_count, sizeof(*tile_heights) * 16);
+		if (!tile_heights) {
+			SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
+			exit(1);
+		}
+
+		tile_widths = (uint8_t*) calloc(tile_count, sizeof(*tile_widths)  * 16);
+		if (!tile_widths) {
+			SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
+			exit(1);
+		}
+
+		tile_angles = (float*) calloc(tile_count, sizeof(*tile_angles));
+		if (!tile_angles) {
+			SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
+			exit(1);
+		}
+
+		SDL_RWread(f, tile_heights, 16 * sizeof(*tile_heights), tile_count);
+		SDL_RWread(f, tile_widths,  16 * sizeof(*tile_widths), tile_count);
+		SDL_RWread(f, tile_angles,  sizeof(*tile_angles), tile_count);
 
 		SDL_RWclose(f);
-	}
+	};
 
-	if (texture = IMG_LoadTexture(game->renderer, texture_filepath)) {
+	auto load_texture = [&]() -> void {
+		texture = IMG_LoadTexture(game->renderer, texture_filepath);
+
+		if (!texture) {
+			SDL_ShowSimpleMessageBox(0, "ERROR", "Couldn't load tileset texture.", nullptr);
+			return;
+		}
+
 		int w;
 		int h;
 		SDL_QueryTexture(texture, nullptr, nullptr, &w, &h);
 
-		tiles_in_row = w / 16;
+		// tiles_in_row = w / 16;
+	};
 
+	load_binary();
+	load_texture();
+
+	if (texture) {
 		GenCollisionTextures();
 	}
+}
+
+void TileSet::Destroy() {
+	if (width_texture) SDL_DestroyTexture(width_texture);
+	width_texture = nullptr;
+
+	if (height_texture) SDL_DestroyTexture(height_texture);
+	height_texture = nullptr;
+
+	if (texture) SDL_DestroyTexture(texture);
+	texture = nullptr;
+
+	if (tile_angles) free(tile_angles);
+	tile_angles = nullptr;
+
+	if (tile_widths) free(tile_widths);
+	tile_widths = nullptr;
+
+	if (tile_heights) free(tile_heights);
+	tile_heights = nullptr;
 }
 
 void TileSet::GenCollisionTextures() {
@@ -39,7 +102,7 @@ void TileSet::GenCollisionTextures() {
 	SDL_Surface* wsurf = SDL_CreateRGBSurfaceWithFormat(0, texture_w, texture_h, 32, SDL_PIXELFORMAT_ARGB8888);
 	SDL_FillRect(wsurf, nullptr, 0x00000000);
 
-	for (uint32_t tile_index = 0; tile_index < TileCount(); tile_index++) {
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
 		uint8_t* height = GetTileHeight(tile_index);
 		uint8_t* width  = GetTileWidth(tile_index);
 		SDL_Rect src = GetTextureSrcRect(tile_index);
@@ -86,8 +149,8 @@ void TileSet::GenCollisionTextures() {
 		}
 	}
 
-	world->tileset.height_texture = SDL_CreateTextureFromSurface(game->renderer, surf);
-	world->tileset.width_texture = SDL_CreateTextureFromSurface(game->renderer, wsurf);
+	height_texture = SDL_CreateTextureFromSurface(game->renderer, surf);
+	width_texture = SDL_CreateTextureFromSurface(game->renderer, wsurf);
 
 	SDL_FreeSurface(surf);
 	SDL_FreeSurface(wsurf);

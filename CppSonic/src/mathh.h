@@ -2,6 +2,8 @@
 
 #define PI 3.1415926535897932384626433832795f
 
+struct Vector2 { float x, y; };
+
 template <typename T>
 static T min(T a, T b) {
 	return (a < b) ? a : b;
@@ -53,12 +55,20 @@ static float to_degrees(float rad) {
 	return rad / PI * 180.0f;
 }
 
+static float dsin(float deg) {
+	return sinf(to_radians(deg));
+}
+
+static float dcos(float deg) {
+	return cosf(to_radians(deg));
+}
+
 static float lengthdir_x(float len, float dir) {
-	return cosf(to_radians(dir)) * len;
+	return dcos(dir) * len;
 }
 
 static float lengthdir_y(float len, float dir) {
-	return -sinf(to_radians(dir)) * len;
+	return -dsin(dir) * len;
 }
 
 static float angle_wrap(float deg) {
@@ -75,14 +85,12 @@ static float angle_difference(float dest, float src) {
 	return res;
 }
 
-static void normalize0(float x, float y, float* out_x, float* out_y) {
-	float l = length(x, y);
-	if (l == 0.0f) {
-		*out_x = 0.0f;
-		*out_y = 0.0f;
+static Vector2 normalize0(Vector2 v) {
+	float len = length(v.x, v.y);
+	if (len == 0.0f) {
+		return {};
 	} else {
-		*out_x = x / l;
-		*out_y = y / l;
+		return {v.x / len, v.y / len};
 	}
 }
 
@@ -125,10 +133,14 @@ static int sign_int(float x) {
 	return -1;
 }
 
-static float dsin(float deg) {
-	return sinf(to_radians(deg));
+static float floor_to(float a, float b) {
+	return floorf(a / b) * b;
 }
 
-static float dcos(float deg) {
-	return cosf(to_radians(deg));
+static float round_to(float a, float b) {
+	return roundf(a / b) * b;
+}
+
+static float ceil_to(float a, float b) {
+	return ceilf(a / b) * b;
 }
