@@ -10,15 +10,17 @@
 
 #define GRAVITY 0.21875f
 
-#define PLAYER_WIDTH_RADIUS 9.0f
-#define PLAYER_HEIGHT_RADIUS 19.0f
 #define PLAYER_PUSH_RADIUS 10.0f
+
 #define PLAYER_ACC 0.046875f
 #define PLAYER_DEC 0.5f
 #define PLAYER_FRICTION 0.046875f
 #define PLAYER_TOP_SPEED 6.0f
 #define PLAYER_JUMP_FORCE 6.5f
-#define PLAYER_SLOPE_FACTOR 0.125f
+
+#define PLAYER_SLOPE_FACTOR_NORMAL 0.125f
+#define PLAYER_SLOPE_FACTOR_ROLLUP 0.078125f
+#define PLAYER_SLOPE_FACTOR_ROLLDOWN 0.3125f
 
 World* world;
 
@@ -94,34 +96,39 @@ void World::Quit() {
 	tileset.Destroy();
 }
 
+static bool player_is_grounded(Player* p) {
+	return (p->state == PlayerState::GROUND
+			|| p->state == PlayerState::ROLL);
+}
+
 void World::GetGroundSensorsPositions(Player* p, float* sensor_a_x, float* sensor_a_y, float* sensor_b_x, float* sensor_b_y) {
 	switch (p->mode) {
 		case PlayerMode::FLOOR: {
-			*sensor_a_x = p->x - PLAYER_WIDTH_RADIUS;
-			*sensor_a_y = p->y + PLAYER_HEIGHT_RADIUS;
-			*sensor_b_x = p->x + PLAYER_WIDTH_RADIUS;
-			*sensor_b_y = p->y + PLAYER_HEIGHT_RADIUS;
+			*sensor_a_x = p->x - p->width_radius;
+			*sensor_a_y = p->y + p->height_radius;
+			*sensor_b_x = p->x + p->width_radius;
+			*sensor_b_y = p->y + p->height_radius;
 			break;
 		}
 		case PlayerMode::RIGHT_WALL: {
-			*sensor_a_x = p->x + PLAYER_HEIGHT_RADIUS;
-			*sensor_a_y = p->y + PLAYER_WIDTH_RADIUS;
-			*sensor_b_x = p->x + PLAYER_HEIGHT_RADIUS;
-			*sensor_b_y = p->y - PLAYER_WIDTH_RADIUS;
+			*sensor_a_x = p->x + p->height_radius;
+			*sensor_a_y = p->y + p->width_radius;
+			*sensor_b_x = p->x + p->height_radius;
+			*sensor_b_y = p->y - p->width_radius;
 			break;
 		}
 		case PlayerMode::CEILING: {
-			*sensor_a_x = p->x + PLAYER_WIDTH_RADIUS;
-			*sensor_a_y = p->y - PLAYER_HEIGHT_RADIUS;
-			*sensor_b_x = p->x - PLAYER_WIDTH_RADIUS;
-			*sensor_b_y = p->y - PLAYER_HEIGHT_RADIUS;
+			*sensor_a_x = p->x + p->width_radius;
+			*sensor_a_y = p->y - p->height_radius;
+			*sensor_b_x = p->x - p->width_radius;
+			*sensor_b_y = p->y - p->height_radius;
 			break;
 		}
 		case PlayerMode::LEFT_WALL: {
-			*sensor_a_x = p->x - PLAYER_HEIGHT_RADIUS;
-			*sensor_a_y = p->y - PLAYER_WIDTH_RADIUS;
-			*sensor_b_x = p->x - PLAYER_HEIGHT_RADIUS;
-			*sensor_b_y = p->y + PLAYER_WIDTH_RADIUS;
+			*sensor_a_x = p->x - p->height_radius;
+			*sensor_a_y = p->y - p->width_radius;
+			*sensor_b_x = p->x - p->height_radius;
+			*sensor_b_y = p->y + p->width_radius;
 			break;
 		}
 		default: {
@@ -134,6 +141,18 @@ void World::GetGroundSensorsPositions(Player* p, float* sensor_a_x, float* senso
 	}
 }
 
+static bool player_is_small_radius(Player* p) {
+	switch (p->state) {
+		case PlayerState::GROUND:
+			return false;
+		case PlayerState::ROLL:
+			return true;
+		case PlayerState::AIR:
+			return p->anim == anim_roll;
+	}
+	return false;
+}
+
 void World::GetPushSensorsPositions(Player* p, float* sensor_e_x, float* sensor_e_y, float* sensor_f_x, float* sensor_f_y) {
 	switch (p->mode) {
 		case PlayerMode::FLOOR: {
@@ -141,7 +160,7 @@ void World::GetPushSensorsPositions(Player* p, float* sensor_e_x, float* sensor_
 			*sensor_e_y = p->y;
 			*sensor_f_x = p->x + PLAYER_PUSH_RADIUS;
 			*sensor_f_y = p->y;
-			if (p->state == PlayerState::GROUND && p->ground_angle == 0.0f) {
+			if (player_is_grounded(p) && p->ground_angle == 0.0f && !player_is_small_radius(p)) {
 				*sensor_e_y += 8.0f;
 				*sensor_f_y += 8.0f;
 			}
@@ -152,7 +171,7 @@ void World::GetPushSensorsPositions(Player* p, float* sensor_e_x, float* sensor_
 			*sensor_e_y = p->y + PLAYER_PUSH_RADIUS;
 			*sensor_f_x = p->x;
 			*sensor_f_y = p->y - PLAYER_PUSH_RADIUS;
-			if (p->state == PlayerState::GROUND && p->ground_angle == 0.0f) {
+			if (player_is_grounded(p) && p->ground_angle == 0.0f && !player_is_small_radius(p)) {
 				*sensor_e_x += 8.0f;
 				*sensor_f_x += 8.0f;
 			}
@@ -163,7 +182,7 @@ void World::GetPushSensorsPositions(Player* p, float* sensor_e_x, float* sensor_
 			*sensor_e_y = p->y;
 			*sensor_f_x = p->x - PLAYER_PUSH_RADIUS;
 			*sensor_f_y = p->y;
-			if (p->state == PlayerState::GROUND && p->ground_angle == 0.0f) {
+			if (player_is_grounded(p) && p->ground_angle == 0.0f && !player_is_small_radius(p)) {
 				*sensor_e_y -= 8.0f;
 				*sensor_f_y -= 8.0f;
 			}
@@ -174,7 +193,7 @@ void World::GetPushSensorsPositions(Player* p, float* sensor_e_x, float* sensor_
 			*sensor_e_y = p->y - PLAYER_PUSH_RADIUS;
 			*sensor_f_x = p->x;
 			*sensor_f_y = p->y + PLAYER_PUSH_RADIUS;
-			if (p->state == PlayerState::GROUND && p->ground_angle == 0.0f) {
+			if (player_is_grounded(p) && p->ground_angle == 0.0f && !player_is_small_radius(p)) {
 				*sensor_e_x -= 8.0f;
 				*sensor_f_x -= 8.0f;
 			}
@@ -223,6 +242,7 @@ SensorResult World::SensorCheckDown(float x, float y, int layer) {
 	int iy = (int) y;
 
 	if (ix < 0 || iy < 0) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -230,6 +250,7 @@ SensorResult World::SensorCheckDown(float x, float y, int layer) {
 	int tile_y = iy / 16;
 
 	if (tile_x >= tilemap.width || tile_y >= tilemap.height) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -312,6 +333,7 @@ SensorResult World::SensorCheckRight(float x, float y, int layer) {
 	int iy = (int) y;
 
 	if (ix < 0 || iy < 0) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -319,6 +341,7 @@ SensorResult World::SensorCheckRight(float x, float y, int layer) {
 	int tile_y = iy / 16;
 
 	if (tile_x >= tilemap.width || tile_y >= tilemap.height) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -403,6 +426,7 @@ SensorResult World::SensorCheckUp(float x, float y, int layer) {
 	int iy = (int) y;
 
 	if (ix < 0 || iy < 0) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -410,6 +434,7 @@ SensorResult World::SensorCheckUp(float x, float y, int layer) {
 	int tile_y = iy / 16;
 
 	if (tile_x >= tilemap.width || tile_y >= tilemap.height) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -430,7 +455,7 @@ SensorResult World::SensorCheckUp(float x, float y, int layer) {
 			height = 0;
 		}
 
-		result.dist = 16 + (iy % 16) - (height + 1);
+		result.dist = 16 + (iy % 16) - (height);
 		return result;
 	} else if (height == 16) {
 		if (tile_y + 1 < tilemap.height) {
@@ -446,7 +471,7 @@ SensorResult World::SensorCheckUp(float x, float y, int layer) {
 			height = 0;
 		}
 
-		result.dist = -16 + (iy % 16) - (height + 1);
+		result.dist = -16 + (iy % 16) - (height);
 		return result;
 	} else {
 		result.tile = tile;
@@ -454,7 +479,7 @@ SensorResult World::SensorCheckUp(float x, float y, int layer) {
 		result.tile_x = tile_x;
 		result.tile_y = tile_y;
 
-		result.dist = (iy % 16) - (height + 1);
+		result.dist = (iy % 16) - (height);
 		return result;
 	}
 
@@ -476,13 +501,15 @@ SensorResult World::SensorCheckLeft(float x, float y, int layer) {
 				if (hh <= 0x10) height = hh;
 			} else if (!tile.hflip && tile.vflip) {
 				int hh = h[15 - iy % 16];
-				if (hh == 16) height = 16;
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
 			} else if (tile.hflip && !tile.vflip) {
 				int hh = h[iy % 16];
 				if (hh <= 0x10) height = hh;
 			} else if (!tile.hflip && !tile.vflip) {
 				int hh = h[iy % 16];
-				if (hh == 16) height = 16;
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
 			}
 		}
 		return height;
@@ -492,6 +519,7 @@ SensorResult World::SensorCheckLeft(float x, float y, int layer) {
 	int iy = (int) y;
 
 	if (ix < 0 || iy < 0) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -499,6 +527,7 @@ SensorResult World::SensorCheckLeft(float x, float y, int layer) {
 	int tile_y = iy / 16;
 
 	if (tile_x >= tilemap.width || tile_y >= tilemap.height) {
+		result.dist = 32;
 		return result;
 	}
 
@@ -519,7 +548,7 @@ SensorResult World::SensorCheckLeft(float x, float y, int layer) {
 			height = 0;
 		}
 
-		result.dist = 16 + (ix % 16) - (height + 1);
+		result.dist = 16 + (ix % 16) - (height);
 		return result;
 	} else if (height == 16) {
 		if (tile_x + 1 < tilemap.width) {
@@ -535,7 +564,7 @@ SensorResult World::SensorCheckLeft(float x, float y, int layer) {
 			height = 0;
 		}
 
-		result.dist = -16 + (ix % 16) - (height + 1);
+		result.dist = -16 + (ix % 16) - (height);
 		return result;
 	} else {
 		result.tile = tile;
@@ -543,7 +572,7 @@ SensorResult World::SensorCheckLeft(float x, float y, int layer) {
 		result.tile_x = tile_x;
 		result.tile_y = tile_y;
 
-		result.dist = (ix % 16) - (height + 1);
+		result.dist = (ix % 16) - (height);
 		return result;
 	}
 
@@ -592,44 +621,75 @@ SensorResult World::PushSensorFCheck(Player* p, float x, float y) {
 	return {};
 }
 
+static bool player_is_moving_mostly_right(Player* p) {
+	if (p->xspeed == 0.0f && p->yspeed == 0.0f) return false;
+	float player_move_dir = angle_wrap(point_direction(0.0f, 0.0f, p->xspeed, p->yspeed));
+	return (player_move_dir < 46.0f) || (316.0f <= player_move_dir);
+}
+
+static bool player_is_moving_mostly_up(Player* p) {
+	if (p->xspeed == 0.0f && p->yspeed == 0.0f) return false;
+	float player_move_dir = angle_wrap(point_direction(0.0f, 0.0f, p->xspeed, p->yspeed));
+	return 46.0f <= player_move_dir && player_move_dir < 136.0f;
+}
+
+static bool player_is_moving_mostly_left(Player* p) {
+	if (p->xspeed == 0.0f && p->yspeed == 0.0f) return false;
+	float player_move_dir = angle_wrap(point_direction(0.0f, 0.0f, p->xspeed, p->yspeed));
+	return 136.0f <= player_move_dir && player_move_dir < 226.0f;
+}
+
+static bool player_is_moving_mostly_down(Player* p) {
+	if (p->xspeed == 0.0f && p->yspeed == 0.0f) return false;
+	float player_move_dir = angle_wrap(point_direction(0.0f, 0.0f, p->xspeed, p->yspeed));
+	return 226.0f <= player_move_dir && player_move_dir < 316.0f;
+}
+
 bool World::AreGroundSensorsActive(Player* p) {
-	switch (p->state) {
-		case PlayerState::GROUND:
-			return true;
-		case PlayerState::AIR:
-			return true;
+	if (player_is_grounded(p)) {
+		return true;
+	} else {
+		// return (player_is_moving_mostly_right(p)
+		// 		|| player_is_moving_mostly_left(p)
+		// 		|| player_is_moving_mostly_down(p));
+
+		return p->yspeed >= 0.0f;
 	}
 	return false;
 }
 
 bool World::IsPushSensorEActive(Player* p) {
-	switch (p->state) {
-		case PlayerState::GROUND: {
-			float a = angle_wrap(p->ground_angle);
-			if (!(a <= 90.0f || a >= 270.0f)) {
-				return false;
-			}
-
-			return (p->ground_speed < 0.0f);
+	if (player_is_grounded(p)) {
+		float a = angle_wrap(p->ground_angle);
+		if (!(a <= 90.0f || a >= 270.0f)) {
+			return false;
 		}
-		case PlayerState::AIR:
-			return true;
+
+		return (p->ground_speed < 0.0f);
+	} else {
+		// return (player_is_moving_mostly_left(p)
+		// 		|| player_is_moving_mostly_up(p)
+		// 		|| player_is_moving_mostly_down(p));
+
+		return p->xspeed < 0.0f;
 	}
 	return false;
 }
 
 bool World::IsPushSensorFActive(Player* p) {
-	switch (p->state) {
-		case PlayerState::GROUND: {
-			float a = angle_wrap(p->ground_angle);
-			if (!(a <= 90.0f || a >= 270.0f)) {
-				return false;
-			}
-
-			return (p->ground_speed > 0.0f);
+	if (player_is_grounded(p)) {
+		float a = angle_wrap(p->ground_angle);
+		if (!(a <= 90.0f || a >= 270.0f)) {
+			return false;
 		}
-		case PlayerState::AIR:
-			return true;
+
+		return (p->ground_speed > 0.0f);
+	} else {
+		// return (player_is_moving_mostly_right(p)
+		// 		|| player_is_moving_mostly_up(p)
+		// 		|| player_is_moving_mostly_down(p));
+
+		return p->xspeed > 0.0f;
 	}
 	return false;
 }
@@ -657,8 +717,14 @@ void World::GroundSensorCollision(Player* p) {
 		sensor_y = sensor_b_y;
 	}
 
-	if ((p->state == PlayerState::GROUND && res.dist <= 14)
-		|| (p->state == PlayerState::AIR && res.dist <= 0)) {
+	bool collide = false;
+	if (player_is_grounded(p)) {
+		collide = res.dist <= 14;
+	} else {
+		collide = res.dist <= 0;
+	}
+
+	if (collide) {
 		switch (p->mode) {
 			case PlayerMode::FLOOR:      p->y += (float) res.dist; break;
 			case PlayerMode::RIGHT_WALL: p->x += (float) res.dist; break;
@@ -701,33 +767,19 @@ void World::GroundSensorCollision(Player* p) {
 			}
 		}
 
-		float a = angle_wrap(p->ground_angle);
-		if (a <= 45.0f) {
-			p->mode = PlayerMode::FLOOR;
-		} else if (a <= 134.0f) {
-			p->mode = PlayerMode::RIGHT_WALL;
-		} else if (a <= 225.0f) {
-			p->mode = PlayerMode::CEILING;
-		} else if (a <= 314.0f) {
-			p->mode = PlayerMode::LEFT_WALL;
-		} else {
-			p->mode = PlayerMode::FLOOR;
-		}
-
-		float player_move_dir = angle_wrap(point_direction(0.0f, 0.0f, p->xspeed, p->yspeed));
-
 		if (p->state == PlayerState::AIR) {
 			p->state = PlayerState::GROUND;
 			float a = angle_wrap(p->ground_angle);
-			if (a <= 23.0f || a >= 339.0f) {
+
+			// if (a <= 23.0f || a >= 339.0f) {
+			if (a <= 22.0f || a >= 339.0f) {
 				// flat
 
 				p->ground_speed = p->xspeed;
 			} else if (a <= 45.0f || a >= 316.0f) {
 				// slope
 
-				if (player_move_dir <= 45.0f || player_move_dir >= 316.0f || (136.0f <= player_move_dir && player_move_dir <= 225.0f)) {
-					// mostly right or mostly left
+				if (player_is_moving_mostly_right(p) || player_is_moving_mostly_left(p)) {
 					p->ground_speed = p->xspeed;
 				} else {
 					p->ground_speed = p->yspeed * 0.5f * -sign(dsin(p->ground_angle));
@@ -735,8 +787,7 @@ void World::GroundSensorCollision(Player* p) {
 			} else {
 				// steep
 
-				if (player_move_dir <= 45.0f || player_move_dir >= 316.0f || (136.0f <= player_move_dir && player_move_dir <= 225.0f)) {
-					// mostly right or mostly left
+				if (player_is_moving_mostly_right(p) || player_is_moving_mostly_left(p)) {
 					p->ground_speed = p->xspeed;
 				} else {
 					p->ground_speed = p->yspeed * -sign(dsin(p->ground_angle));
@@ -773,7 +824,8 @@ void World::PushSensorCollision(Player* p) {
 						p->y -= (float) res.dist;
 						break;
 				}
-				p->ground_speed = 0.0f;
+				if (p->state == PlayerState::AIR) p->xspeed = 0.0f;
+				else p->ground_speed = 0.0f;
 			}
 		}
 	}
@@ -802,9 +854,29 @@ void World::PushSensorCollision(Player* p) {
 						p->y += (float) res.dist;
 						break;
 				}
-				p->ground_speed = 0.0f;
+				if (p->state == PlayerState::AIR) p->xspeed = 0.0f;
+				else p->ground_speed = 0.0f;
 			}
 		}
+	}
+}
+
+static void set_player_mode(Player* p) {
+	if (player_is_grounded(p)) {
+		float a = angle_wrap(p->ground_angle);
+		if (a <= 45.0f) {
+			p->mode = PlayerMode::FLOOR;
+		} else if (a <= 134.0f) {
+			p->mode = PlayerMode::RIGHT_WALL;
+		} else if (a <= 225.0f) {
+			p->mode = PlayerMode::CEILING;
+		} else if (a <= 314.0f) {
+			p->mode = PlayerMode::LEFT_WALL;
+		} else {
+			p->mode = PlayerMode::FLOOR;
+		}
+	} else {
+		p->mode = PlayerMode::FLOOR;
 	}
 }
 
@@ -815,89 +887,234 @@ void World::UpdatePlayer(Player* p, float delta) {
 		if (input & INPUT_RIGHT) input_h++;
 	}
 
-	float left = PLAYER_WIDTH_RADIUS  + 1.0f;
-	float top  = PLAYER_HEIGHT_RADIUS + 1.0f;
-	float right  = (float)tilemap.width  * 16.0f - PLAYER_WIDTH_RADIUS  - 1.0f;
-	float bottom = (float)tilemap.height * 16.0f - PLAYER_HEIGHT_RADIUS - 1.0f;
+	auto player_jump = [](Player* p) {
+		p->xspeed -= PLAYER_JUMP_FORCE * dsin(p->ground_angle);
+		p->yspeed -= PLAYER_JUMP_FORCE * dcos(p->ground_angle);
+		p->state = PlayerState::AIR;
+		p->ground_angle = 0.0f;
+		p->next_anim = anim_roll;
+		p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
+		p->flags |= FLAG_PLAYER_JUMPED;
+	};
 
-	switch (p->state) {
-		case PlayerState::GROUND: {
-			// Check for starting a spindash while crouched.
+	auto apply_slope_factor = [](Player* p, float delta) {
+		// Adjust Ground Speed based on current Ground Angle (Slope Factor).
 
+		if (p->mode != PlayerMode::CEILING && p->ground_speed != 0.0f) {
+			float factor = PLAYER_SLOPE_FACTOR_NORMAL;
 
-			// Adjust Ground Speed based on current Ground Angle (Slope Factor).
-			p->ground_speed -= PLAYER_SLOPE_FACTOR * dsin(p->ground_angle) * delta;
-
-			// Update Ground Speed based on directional input and apply friction/deceleration.
-			if (input_h == 0) {
-				p->ground_speed = approach(p->ground_speed, 0.0f, PLAYER_FRICTION * delta);
-			} else {
-				if (input_h == -sign_int(p->ground_speed)) {
-					p->ground_speed += (float)input_h * PLAYER_DEC * delta;
+			if (p->state == PlayerState::ROLL) {
+				if (sign(p->ground_speed) == sign(dsin(p->ground_angle))) {
+					factor = PLAYER_SLOPE_FACTOR_ROLLUP;
 				} else {
-					p->ground_speed += (float)input_h * PLAYER_ACC * delta;
+					factor = PLAYER_SLOPE_FACTOR_ROLLDOWN;
 				}
 			}
 
-			p->ground_speed = clamp(p->ground_speed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
+			p->ground_speed -= factor * dsin(p->ground_angle) * delta;
+		}
+	};
 
-			// Check for starting crouching, balancing on ledges, etc.
+	auto keep_in_bounds = [this](Player* p) {
+		// Handle camera boundaries (keep the Player inside the view and kill them if they touch the kill plane).
 
+		float left = p->width_radius  + 1.0f;
+		float top  = p->height_radius + 1.0f;
+		float right  = (float)tilemap.width  * 16.0f - p->width_radius  - 1.0f;
+		float bottom = (float)tilemap.height * 16.0f - p->height_radius - 1.0f;
 
-			// Move the Player object
+		if (p->x < left)   {p->x = left;  p->ground_speed = 0.0f;}
+		if (p->x > right)  {p->x = right; p->ground_speed = 0.0f;}
+		if (p->y < top)    {p->y = top;}
+		if (p->y > bottom) {p->y = bottom;}
+	};
+
+	auto player_grounded_physics = [this, keep_in_bounds](Player* p, float delta) {
+		auto physics_step = [this](Player* p, float delta) {
+			set_player_mode(p);
+
 			p->xspeed =  dcos(p->ground_angle) * p->ground_speed;
 			p->yspeed = -dsin(p->ground_angle) * p->ground_speed;
 
+			// Move the Player object
 			p->x += p->xspeed * delta;
 			p->y += p->yspeed * delta;
-
-			if (p->x < left)   {p->x = left;  p->ground_speed = 0.0f;}
-			if (p->x > right)  {p->x = right; p->ground_speed = 0.0f;}
-			if (p->y < top)    {p->y = top;}
-			if (p->y > bottom) {p->y = bottom;}
 
 			// Push Sensor collision occurs.
 			PushSensorCollision(p);
 
 			// Grounded Ground Sensor collision occurs.
 			GroundSensorCollision(p);
+		};
 
-			if (p->ground_speed == 0.0f) {
-				p->next_anim = anim_idle;
-				p->frame_duration = 1;
-			} else {
-				if (fabsf(p->ground_speed) >= PLAYER_TOP_SPEED) {
-					p->next_anim = anim_run;
+		const int physics_steps = 4;
+		for (int i = 0; i < physics_steps; i++) {
+			physics_step(p, delta / float(physics_steps));
+		}
+
+		keep_in_bounds(p);
+	};
+
+	auto player_slip = [](Player* p) {
+		// Check for slipping/falling when Ground Speed is too low on walls/ceilings.
+
+		float a = angle_wrap(p->ground_angle);
+		if (a >= 46.0f && a <= 315.0f) {
+			if (fabsf(p->ground_speed) < 2.5f) {
+				p->state = PlayerState::AIR;
+				p->ground_speed = 0.0f;
+				p->control_lock = 30.0f;
+
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	if (player_is_small_radius(p)) {
+		p->width_radius  = 7.0f;
+		p->height_radius = 14.0f;
+	} else {
+		p->width_radius  = 9.0f;
+		p->height_radius = 19.0f;
+	}
+
+	switch (p->state) {
+		case PlayerState::GROUND: {
+			p->flags &= ~FLAG_PLAYER_JUMPED;
+
+			apply_slope_factor(p, delta);
+
+			// Update Ground Speed based on directional input and apply friction/deceleration.
+			if (p->anim != anim_spindash
+				// && p->anim != anim_crouch
+				// && p->anim != anim_look_up
+				) {
+				if (input_h == 0) {
+					p->ground_speed = approach(p->ground_speed, 0.0f, PLAYER_FRICTION * delta);
 				} else {
-					p->next_anim = anim_walk;
+					if (input_h == -sign_int(p->ground_speed)) {
+						p->ground_speed += (float)input_h * PLAYER_DEC * delta;
+					} else {
+						p->ground_speed += (float)input_h * PLAYER_ACC * delta;
+					}
 				}
-				p->frame_duration = (int) max(0.0f, 8.0f - fabsf(p->ground_speed));
+			}
+
+			p->ground_speed = clamp(p->ground_speed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
+
+			player_grounded_physics(p, delta);
+
+			if (p->anim != anim_spindash) {
+				if (p->ground_speed == 0.0f) {
+					if (input & INPUT_DOWN) {
+						p->next_anim = anim_crouch;
+						p->frame_duration = 1;
+					} else if (input & INPUT_UP) {
+						p->next_anim = anim_look_up;
+						p->frame_duration = 1;
+					} else {
+						p->next_anim = anim_idle;
+						p->frame_duration = 1;
+					}
+				} else {
+					if (fabsf(p->ground_speed) >= PLAYER_TOP_SPEED) {
+						p->next_anim = anim_run;
+					} else {
+						p->next_anim = anim_walk;
+					}
+					p->frame_duration = (int) max(0.0f, 8.0f - fabsf(p->ground_speed));
+				}
 			}
 
 			if (p->ground_speed != 0.0f) {
 				p->facing = sign_int(p->ground_speed);
 			}
 
-			// Check for slipping/falling when Ground Speed is too low on walls/ceilings.
-			{
-				float a = angle_wrap(p->ground_angle);
-				if (a >= 46.0f && a <= 315.0f) {
-					if (fabsf(p->ground_speed) < 2.5f) {
-						p->state = PlayerState::AIR;
-						p->ground_speed = 0.0f;
-						p->control_lock = 30.0f;
-					}
-				}
+			if (player_slip(p)) {
+				break;
 			}
 
 			// Check for starting a jump.
 			if (input_press & INPUT_JUMP) {
-				p->xspeed -= PLAYER_JUMP_FORCE * dsin(p->ground_angle);
-				p->yspeed -= PLAYER_JUMP_FORCE * dcos(p->ground_angle);
-				p->state = PlayerState::AIR;
-				p->ground_angle = 0.0f;
-				p->next_anim = anim_roll;
-				p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
+				if (p->anim == anim_crouch) {
+					p->next_anim = anim_spindash;
+					p->frame_duration = 1;
+					p->spinrev = 0.0f;
+				} else if (p->anim == anim_look_up) {
+				
+				} else if (p->anim == anim_spindash) {
+					p->spinrev += 2.0f;
+					p->spinrev = min(p->spinrev, 8.0f);
+					p->frame_index = 0;
+				} else {
+					player_jump(p);
+					break;
+				}
+			}
+
+			if (p->anim == anim_spindash) {
+				p->spinrev -= floorf(p->spinrev * 8.0f) / 256.0f * delta;
+
+				if (!(input & INPUT_DOWN)) {
+					p->state = PlayerState::ROLL;
+					p->ground_speed = (8.0f + floorf(p->spinrev) / 2.0f) * float(p->facing);
+					p->next_anim = anim_roll;
+					p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
+					camera_lock = 24.0f - floorf(fabsf(p->ground_speed));
+					break;
+				}
+			}
+
+			// Check for starting a roll.
+			if (fabsf(p->ground_speed) >= 0.5f) {
+				if ((input & INPUT_DOWN) && input_h == 0) {
+					p->state = PlayerState::ROLL;
+					p->next_anim = anim_roll;
+					p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
+					break;
+				}
+			}
+
+			p->control_lock = max(p->control_lock - delta, 0.0f);
+			break;
+		}
+
+		case PlayerState::ROLL: {
+			p->flags &= ~FLAG_PLAYER_JUMPED;
+
+			apply_slope_factor(p, delta);
+
+			// Update Ground Speed based on directional input and apply friction/deceleration.
+			const float roll_friction_speed = 0.0234375f;
+			const float roll_deceleration_speed = 0.125f;
+
+			p->ground_speed = approach(p->ground_speed, 0.0f, roll_friction_speed * delta);
+
+			if (input_h == -sign_int(p->ground_speed)) {
+				p->ground_speed += float(input_h) * roll_deceleration_speed * delta;
+			}
+
+			player_grounded_physics(p, delta);
+
+			p->next_anim = anim_roll;
+			p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
+
+			if (sign_int(p->ground_speed) != p->facing
+				/* || fabsf(p->ground_speed) < 0.5f */) {
+				p->state = PlayerState::GROUND;
+				break;
+			}
+
+			if (player_slip(p)) {
+				break;
+			}
+
+			// Check for starting a jump.
+			if (input_press & INPUT_JUMP) {
+				player_jump(p);
+				break;
 			}
 
 			p->control_lock = max(p->control_lock - delta, 0.0f);
@@ -905,42 +1122,51 @@ void World::UpdatePlayer(Player* p, float delta) {
 		}
 
 		case PlayerState::AIR: {
-			p->mode = PlayerMode::FLOOR;
-
-			// 1. Check for jump button release (variable jump velocity).
-			if (!(input & INPUT_JUMP)) {
+			// Check for jump button release (variable jump velocity).
+			if ((p->flags & FLAG_PLAYER_JUMPED) && !(input & INPUT_JUMP)) {
 				if (p->yspeed < -4.0f) {
 					p->yspeed = -4.0f;
 				}
 			}
 
-			// 3. Update X Speed based on directional input.
-			p->xspeed += (float)input_h * PLAYER_ACC * delta;
+			// Update X Speed based on directional input.
+			const float air_acceleration_speed = 0.09375f;
+			p->xspeed += (float)input_h * air_acceleration_speed * delta;
 
 			p->xspeed = clamp(p->xspeed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
 
-			// 4. Apply air drag.
+			// Apply air drag.
 			if (-4.0f < p->yspeed && p->yspeed < 0.0f) {
-				p->xspeed -= floorf(p->xspeed * 8.0f) / 256.0f * delta;
+				p->xspeed -= floorf(fabsf(p->xspeed) * 8.0f) / 256.0f * sign(p->xspeed) * delta;
 			}
 
-			// 5. Move the Player object
-			p->x += p->xspeed * delta;
-			p->y += p->yspeed * delta;
-
-			if (p->x < left)   {p->x = left;   p->xspeed = 0.0f;}
-			if (p->x > right)  {p->x = right;  p->xspeed = 0.0f;}
-			if (p->y < top)    {p->y = top;    p->yspeed = 0.0f;}
-			if (p->y > bottom) {p->y = bottom; p->yspeed = 0.0f;}
-
-			// 7. Apply gravity.
+			// Apply gravity.
 			p->yspeed += GRAVITY * delta;
 
-			// 10. Rotate Ground Angle back to 0.
-			p->ground_angle -= clamp(angle_difference(p->ground_angle, 0.0f), -2.8125f * delta, 2.8125f * delta);
+			{
+				auto physics_step = [this](Player* p, float delta) {
+					set_player_mode(p);
 
-			// 11. All air collision checks occur here.
-			GroundSensorCollision(p);
+					// Move the Player object
+					p->x += p->xspeed * delta;
+					p->y += p->yspeed * delta;
+
+					// All air collision checks occur here.
+					PushSensorCollision(p);
+
+					GroundSensorCollision(p);
+				};
+
+				const int physics_steps = 4;
+				for (int i = 0; i < physics_steps; i++) {
+					physics_step(p, delta / float(physics_steps));
+				}
+
+				keep_in_bounds(p);
+			}
+
+			// Rotate Ground Angle back to 0.
+			p->ground_angle -= clamp(angle_difference(p->ground_angle, 0.0f), -2.8125f * delta, 2.8125f * delta);
 
 			if (p->xspeed != 0.0f) {
 				p->facing = sign_int(p->xspeed);
@@ -978,7 +1204,8 @@ void World::Update(float delta) {
 		input |= INPUT_UP    * key[SDL_SCANCODE_UP];
 		input |= INPUT_LEFT  * key[SDL_SCANCODE_LEFT];
 		input |= INPUT_DOWN  * key[SDL_SCANCODE_DOWN];
-		input |= INPUT_JUMP  * key[SDL_SCANCODE_Z];
+		input |= INPUT_A     * key[SDL_SCANCODE_Z];
+		input |= INPUT_B     * key[SDL_SCANCODE_X];
 
 		input_press   = (~prev) & input;
 		input_release = prev & (~input);
@@ -987,51 +1214,40 @@ void World::Update(float delta) {
 	if (!debug) {
 		UpdatePlayer(p, delta);
 
-		for (int i = 0; i < object_count; i++) {
-			Object* inst = &objects[i];
-			switch (inst->type) {
-				case ObjType::VERTICAL_LAYER_SWITCHER: {
-					bool active = true;
+		if (camera_lock == 0.0f) {
+			float cam_target_x = floorf(p->x) - float(target_w / 2);
+			float cam_target_y = floorf(p->y) + p->height_radius - 19.0f - float(target_h / 2);
 
-					if (inst->flags & FLAG_LAYER_SWITCHER_GROUNDED_ONLY) {
-						if (p->state != PlayerState::GROUND) {
-							active = false;
-						}
-					}
+			if (camera_x < cam_target_x - 8.0f) {
+				camera_x = min(camera_x + 16.0f * delta, cam_target_x - 8.0f);
+			}
+			if (camera_x > cam_target_x + 8.0f) {
+				camera_x = max(camera_x - 16.0f * delta, cam_target_x + 8.0f);
+			}
 
-					if (!(inst->y - inst->radius <= p->y && p->y < inst->y + inst->radius)) {
-						active = false;
-					}
-
-					if (active) {
-						if (inst->current_side == 0) {
-							if (p->x >= inst->x) {
-								p->layer = inst->layer_2;
-							}
-						} else if (inst->current_side == 1) {
-							if (p->x < inst->x) {
-								p->layer = inst->layer_1;
-							}
-						}
-					}
-
-					if (p->x >= inst->x) {
-						inst->current_side = 1;
-					} else {
-						inst->current_side = 0;
-					}
-					break;
+			if (player_is_grounded(p)) {
+				float camera_speed = 16.0f;
+				if (fabsf(p->ground_speed) < 8.0f) {
+					camera_speed = 6.0f;
+				}
+				camera_y = approach(camera_y, cam_target_y, camera_speed * delta);
+			} else {
+				if (camera_y < cam_target_y - 32.0f) {
+					camera_y = min(camera_y + 16.0f * delta, cam_target_y - 32.0f);
+				}
+				if (camera_y > cam_target_y + 32.0f) {
+					camera_y = max(camera_y - 16.0f * delta, cam_target_y + 32.0f);
 				}
 			}
 		}
 
-		camera_x = (float) (int(p->x) - target_w / 2);
-		camera_y = (float) (int(p->y) - target_h / 2);
-
-		camera_x = clamp(camera_x, 0.0f, float(tilemap.width  * 16));
-		camera_y = clamp(camera_y, 0.0f, float(tilemap.height * 16));
+		camera_x = clamp(camera_x, 0.0f, float(tilemap.width  * 16 - target_w));
+		camera_y = clamp(camera_y, 0.0f, float(tilemap.height * 16 - target_h));
 	} else {
 		float spd = 10.0f;
+		if (key[SDL_SCANCODE_LCTRL]) spd = 20.0f;
+		if (key[SDL_SCANCODE_LSHIFT]) spd = 5.0f;
+
 		if (key[SDL_SCANCODE_LEFT])  {p->x -= spd * delta; camera_x -= spd * delta;}
 		if (key[SDL_SCANCODE_RIGHT]) {p->x += spd * delta; camera_x += spd * delta;}
 		if (key[SDL_SCANCODE_UP])    {p->y -= spd * delta; camera_y -= spd * delta;}
@@ -1045,7 +1261,48 @@ void World::Update(float delta) {
 		p->xspeed = 0.0f;
 		p->yspeed = 0.0f;
 		p->ground_speed = 0.0f;
+		p->state = PlayerState::AIR;
 	}
+
+	for (int i = 0; i < object_count; i++) {
+		Object* inst = &objects[i];
+		switch (inst->type) {
+			case ObjType::VERTICAL_LAYER_SWITCHER: {
+				bool active = true;
+
+				if (inst->flags & FLAG_LAYER_SWITCHER_GROUNDED_ONLY) {
+					if (!player_is_grounded(p)) {
+						active = false;
+					}
+				}
+
+				if (!(inst->y - inst->radius <= p->y && p->y < inst->y + inst->radius)) {
+					active = false;
+				}
+
+				if (active) {
+					if (inst->current_side == 0) {
+						if (p->x >= inst->x) {
+							p->layer = inst->layer_2;
+						}
+					} else if (inst->current_side == 1) {
+						if (p->x < inst->x) {
+							p->layer = inst->layer_1;
+						}
+					}
+				}
+
+				if (p->x >= inst->x) {
+					inst->current_side = 1;
+				} else {
+					inst->current_side = 0;
+				}
+				break;
+			}
+		}
+	}
+
+	camera_lock = max(camera_lock - delta, 0.0f);
 }
 
 #define SENSOR_A_COLOR 0, 240, 0, 255
@@ -1091,6 +1348,7 @@ void World::Draw(float delta) {
 						SDL_SetTextureColorMod(tileset.height_texture, 255, 255, 255);
 					}
 					SDL_RenderCopyEx(game->renderer, tileset.height_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+					SDL_SetTextureColorMod(tileset.height_texture, 255, 255, 255);
 				}
 				if (key[SDL_SCANCODE_4]) {
 					if (tile.hflip || tile.vflip) {
@@ -1099,6 +1357,7 @@ void World::Draw(float delta) {
 						SDL_SetTextureColorMod(tileset.width_texture, 255, 255, 255);
 					}
 					SDL_RenderCopyEx(game->renderer, tileset.width_texture, &src, &dest, 0.0, nullptr, (SDL_RendererFlip) flip);
+					SDL_SetTextureColorMod(tileset.width_texture, 255, 255, 255);
 				}
 				if (key[SDL_SCANCODE_5]) {
 					float angle = tileset.GetTileAngle(tile.index);
@@ -1152,23 +1411,34 @@ void World::Draw(float delta) {
 
 	// draw player
 	{
+		int frame_index = p->frame_index;
+		if (p->anim == anim_roll
+			|| p->anim == anim_spindash) {
+			if (frame_index % 2 == 0) frame_index = 0;
+			else frame_index = 1 + frame_index / 2;
+		}
 		SDL_Rect src = {
-			p->frame_index * 66,
+			frame_index * anim_get_width(p->anim),
 			0,
-			66,
-			66
+			anim_get_width(p->anim),
+			anim_get_height(p->anim)
 		};
 		SDL_Rect dest = {
-			int(p->x) - int(camera_x) - 33,
-			int(p->y) - int(camera_y) - 33,
-			66,
-			66
+			int(p->x) - int(camera_x) - anim_get_width(p->anim)  / 2,
+			int(p->y) - int(camera_y) - anim_get_height(p->anim) / 2,
+			anim_get_width(p->anim),
+			anim_get_height(p->anim)
 		};
 		SDL_RendererFlip flip = (p->facing == 1) ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
-		double a = (double) -p->ground_angle; // round_to(-p->ground_angle, 45.0f);
-		if (p->anim == anim_idle) {
+
+		double a = round_to(-p->ground_angle, 45.0f);
+		// double a = (double) -p->ground_angle;
+
+		if ((player_is_grounded(p) && p->ground_speed == 0.0f)
+			|| p->anim == anim_roll) {
 			a = 0.0;
 		}
+
 		SDL_RenderCopyEx(game->renderer, anim_get_texture(p->anim), &src, &dest, a, nullptr, flip);
 	}
 
@@ -1180,20 +1450,20 @@ void World::Draw(float delta) {
 			case PlayerMode::FLOOR:
 			case PlayerMode::CEILING: {
 				rect = {
-					int(p->x - PLAYER_WIDTH_RADIUS)  - int(camera_x),
-					int(p->y - PLAYER_HEIGHT_RADIUS) - int(camera_y),
-					int(PLAYER_WIDTH_RADIUS  * 2.0f) + 1,
-					int(PLAYER_HEIGHT_RADIUS * 2.0f) + 1
+					int(p->x - p->width_radius)  - int(camera_x),
+					int(p->y - p->height_radius) - int(camera_y),
+					int(p->width_radius  * 2.0f) + 1,
+					int(p->height_radius * 2.0f) + 1
 				};
 				break;
 			}
 			case PlayerMode::RIGHT_WALL:
 			case PlayerMode::LEFT_WALL: {
 				rect = {
-					int(p->x - PLAYER_HEIGHT_RADIUS) - int(camera_x),
-					int(p->y - PLAYER_WIDTH_RADIUS)  - int(camera_y),
-					int(PLAYER_HEIGHT_RADIUS * 2.0f) + 1,
-					int(PLAYER_WIDTH_RADIUS  * 2.0f) + 1
+					int(p->x - p->height_radius) - int(camera_x),
+					int(p->y - p->width_radius)  - int(camera_y),
+					int(p->height_radius * 2.0f) + 1,
+					int(p->width_radius  * 2.0f) + 1
 				};
 				break;
 			}
@@ -1220,6 +1490,27 @@ void World::Draw(float delta) {
 								int(sensor_b_y) - int(camera_y));
 		}
 
+		auto draw_push_sensor = [this](Player* p, float sensor_x, float sensor_y) {
+			switch (p->mode) {
+				case PlayerMode::FLOOR:
+				case PlayerMode::CEILING:
+					SDL_RenderDrawLine(game->renderer,
+									   int(p->x) - int(camera_x),
+									   int(sensor_y) - int(camera_y),
+									   int(sensor_x) - int(camera_x),
+									   int(sensor_y) - int(camera_y));
+					break;
+				case PlayerMode::RIGHT_WALL:
+				case PlayerMode::LEFT_WALL:
+					SDL_RenderDrawLine(game->renderer,
+									   int(sensor_x) - int(camera_x),
+									   int(p->y) - int(camera_y),
+									   int(sensor_x) - int(camera_x),
+									   int(sensor_y) - int(camera_y));
+					break;
+			}
+		};
+
 		if (IsPushSensorEActive(p)) {
 			float sensor_e_x;
 			float sensor_e_y;
@@ -1227,11 +1518,7 @@ void World::Draw(float delta) {
 			float sensor_f_y;
 			GetPushSensorsPositions(p, &sensor_e_x, &sensor_e_y, &sensor_f_x, &sensor_f_y);
 			SDL_SetRenderDrawColor(game->renderer, SENSOR_E_COLOR);
-			SDL_RenderDrawLine(game->renderer,
-							   int(p->x) - int(camera_x),
-							   int(sensor_e_y) - int(camera_y),
-							   int(sensor_e_x) - int(camera_x),
-							   int(sensor_e_y) - int(camera_y));
+			draw_push_sensor(p, sensor_e_x, sensor_e_y);
 		}
 
 		if (IsPushSensorFActive(p)) {
@@ -1241,11 +1528,7 @@ void World::Draw(float delta) {
 			float sensor_f_y;
 			GetPushSensorsPositions(p, &sensor_e_x, &sensor_e_y, &sensor_f_x, &sensor_f_y);
 			SDL_SetRenderDrawColor(game->renderer, SENSOR_F_COLOR);
-			SDL_RenderDrawLine(game->renderer,
-							   int(p->x) - int(camera_x),
-							   int(sensor_f_y) - int(camera_y),
-							   int(sensor_f_x) - int(camera_x),
-							   int(sensor_f_y) - int(camera_y));
+			draw_push_sensor(p, sensor_f_x, sensor_f_y);
 		}
 	}
 

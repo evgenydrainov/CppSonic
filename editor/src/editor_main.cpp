@@ -1,3 +1,5 @@
+#ifdef EDITOR
+
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
@@ -19,8 +21,6 @@
 
 #include <vector>
 #include <direct.h>
-
-#ifdef EDITOR
 
 int selected_tile = 0;
 float tilemap_zoom = 1;

@@ -65,11 +65,13 @@ void Game::Run() {
 
 void Game::Frame() {
 	double t = GetTime();
+	
+	fps = 1.0 / (t - prev_time);
+	prev_time = t;
 
-	double frame_end_time = t + (1.0 / (double)GAME_FPS);
+	double frame_end_time = t + (1.0 / double(GAME_FPS));
 
 	memset(key_pressed, 0, sizeof(key_pressed));
-
 	skip_frame = frame_advance;
 
 	{
@@ -105,11 +107,13 @@ void Game::Frame() {
 		}
 	}
 
-	float delta = 60.0f / (float)GAME_FPS;
+	{
+		float delta = 60.0f / float(GAME_FPS);
 
-	Update(delta);
+		Update(delta);
 
-	Draw(delta);
+		Draw(delta);
+	}
 
 #ifndef __EMSCRIPTEN__
 	t = GetTime();
@@ -122,6 +126,8 @@ void Game::Frame() {
 }
 
 void Game::Update(float delta) {
+	double t = GetTime();
+
 	switch (state) {
 		case GameState::PLAYING: {
 			if (!skip_frame) {
@@ -134,9 +140,13 @@ void Game::Update(float delta) {
 			break;
 		}
 	}
+
+	update_took = (GetTime() - t) * 1000.0;
 }
 
 void Game::Draw(float delta) {
+	double t = GetTime();
+
 	// draw game to game texture
 	SDL_SetRenderTarget(renderer, game_texture);
 	{
@@ -168,6 +178,20 @@ void Game::Draw(float delta) {
 		int draw_x = 0;
 		int draw_y = 0;
 
+		{
+			char buf[100];
+			stb_snprintf(buf,
+						 sizeof(buf),
+						 "%ffps\n"
+						 "update: %fms\n"
+						 "draw: %fms\n"
+						 "\n",
+						 fps,
+						 update_took,
+						 draw_took);
+			draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y).y;
+		}
+
 		switch (state) {
 			case GameState::PLAYING: {
 				float x = mouse_x + world->camera_x;
@@ -189,39 +213,47 @@ void Game::Draw(float delta) {
 							 "xspeed: %f\n"
 							 "yspeed: %f\n"
 							 "ground speed: %f\n"
-							 "ground angle: %f\n",
+							 "ground angle: %f\n"
+							 "%s\n"
+							 "\n",
 							 world->player.x,
 							 world->player.y,
 							 world->player.xspeed,
 							 world->player.yspeed,
 							 world->player.ground_speed,
-							 world->player.ground_angle);
-				draw_y = DrawTextShadow(game->renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+							 world->player.ground_angle,
+							 anim_get_name(world->player.anim));
+				draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
 
 				if (world->debug) {
-					char buf[100];
+					char buf[200];
 					stb_snprintf(buf,
 								 sizeof(buf),
 								 "mouse x: %d\n"
 								 "mouse y: %d\n"
 								 "mouse tile: %d\n"
 								 "angle: %f\n"
-								 "hflip: %d vflip: %d\n",
+								 "hflip: %d vflip: %d\n"
+								 "top solid: %d\n"
+								 "left right bottom solid: %d\n",
 								 tile_x,
 								 tile_y,
 								 tile.index,
 								 angle,
-								 tile.hflip, tile.vflip);
-					draw_y = DrawTextShadow(game->renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+								 tile.hflip, tile.vflip,
+								 tile.top_solid,
+								 tile.left_right_bottom_solid);
+					draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
 
 					if (height) {
 						char buf[100];
 						stb_snprintf(buf,
 									 sizeof(buf),
-									 "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x \n",
+									 "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x \n"
+									 "\n",
 									 height[ 0], height[ 1], height[ 2], height[ 3], height[ 4], height[ 5], height[ 6], height[ 7],
 									 height[ 8], height[ 9], height[10], height[11], height[12], height[13], height[14], height[15]);
-						draw_y = DrawTextShadow(game->renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+						draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
 					}
 				}
 
@@ -231,4 +263,6 @@ void Game::Draw(float delta) {
 	}
 
 	SDL_RenderPresent(renderer);
+
+	draw_took = (GetTime() - t) * 1000.0;
 }

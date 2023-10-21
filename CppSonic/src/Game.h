@@ -30,6 +30,10 @@ struct Game {
 	bool quit;
 	bool skip_frame;
 	bool frame_advance;
+	double update_took;
+	double draw_took;
+	double prev_time;
+	double fps;
 
 	void Init();
 	void Quit();

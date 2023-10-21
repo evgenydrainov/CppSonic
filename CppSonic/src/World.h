@@ -12,7 +12,10 @@ enum {
 	INPUT_UP    = 1 << 1,
 	INPUT_LEFT  = 1 << 2,
 	INPUT_DOWN  = 1 << 3,
-	INPUT_JUMP  = 1 << 4
+	INPUT_A     = 1 << 4,
+	INPUT_B     = 1 << 5,
+
+	INPUT_JUMP = INPUT_A | INPUT_B
 };
 
 struct World;
@@ -34,6 +37,7 @@ struct World {
 
 	float camera_x;
 	float camera_y;
+	float camera_lock;
 
 	uint32_t input;
 	uint32_t input_press;

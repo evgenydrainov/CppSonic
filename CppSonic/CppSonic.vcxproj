@@ -178,11 +178,6 @@
     <ClInclude Include="src\TileSet.h" />
     <ClInclude Include="src\World.h" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\editor\editor.vcxproj">
-      <Project>{93c0db64-276b-43ab-9dbf-ca9e800c4969}</Project>
-    </ProjectReference>
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

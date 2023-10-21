@@ -4,6 +4,7 @@
 
 enum struct PlayerState {
 	GROUND,
+	ROLL,
 	AIR
 };
 
@@ -31,6 +32,10 @@ struct Player {
 	int facing = 1;
 	int layer;
 	float control_lock;
+	float spinrev;
+	float width_radius  = 9.0f;
+	float height_radius = 19.0f;
+	uint32_t flags;
 };
 
 #define LIST_OF_ALL_OBJ_TYPES \
@@ -46,6 +51,7 @@ enum struct ObjType {
 typedef int instance_id;
 
 enum {
+	FLAG_PLAYER_JUMPED = 1 << 8,
 	FLAG_LAYER_SWITCHER_GROUNDED_ONLY = 1 << 16
 };
 

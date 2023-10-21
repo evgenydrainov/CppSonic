@@ -4,8 +4,26 @@
 #include <SDL_image.h>
 #include <SDL_ttf.h>
 
-#define X(_, frame_count) frame_count,
+#define X(_1, frame_count, _2, _3) frame_count,
 static int anim_frame_count[ANIM_COUNT] = {
+	LIST_OF_ALL_ANIMS
+};
+#undef X
+
+#define X(name, _1, _2, _3) #name,
+static const char* anim_names[ANIM_COUNT] = {
+	LIST_OF_ALL_ANIMS
+};
+#undef X
+
+#define X(_1, _2, width, _3) width,
+static int anim_width[ANIM_COUNT] = {
+	LIST_OF_ALL_ANIMS
+};
+#undef X
+
+#define X(_1, _2, _3, height) height,
+static int anim_height[ANIM_COUNT] = {
 	LIST_OF_ALL_ANIMS
 };
 #undef X
@@ -29,7 +47,7 @@ static bool load_anim(anim_index anim, const char* fname) {
 bool load_all_assets() {
 	bool error = false;
 
-	#define X(name, _) if (!load_anim(name, "anim/" #name ".png")) error = true;
+	#define X(name, _1, _2, _3) if (!load_anim(name, "anim/" #name ".png")) error = true;
 	LIST_OF_ALL_ANIMS
 	#undef X
 
@@ -63,4 +81,25 @@ SDL_Texture* anim_get_texture(anim_index anim) {
 		return anim_textures[anim];
 	}
 	return nullptr;
+}
+
+const char* anim_get_name(anim_index anim) {
+	if (0 <= anim && anim < ANIM_COUNT) {
+		return anim_names[anim];
+	}
+	return "unknown";
+}
+
+int anim_get_width(anim_index anim) {
+	if (0 <= anim && anim < ANIM_COUNT) {
+		return anim_width[anim];
+	}
+	return 0;
+}
+
+int anim_get_height(anim_index anim) {
+	if (0 <= anim && anim < ANIM_COUNT) {
+		return anim_height[anim];
+	}
+	return 0;
 }
