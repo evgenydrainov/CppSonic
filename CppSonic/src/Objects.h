@@ -51,7 +51,7 @@ enum struct ObjType {
 typedef int instance_id;
 
 enum {
-	FLAG_PLAYER_JUMPED = 1 << 8,
+	FLAG_PLAYER_JUMPED = 1 << 16,
 	FLAG_LAYER_SWITCHER_GROUNDED_ONLY = 1 << 16
 };
 

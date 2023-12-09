@@ -1,4 +1,8 @@
+#pragma once
+
 // Cirno's Perfect Math Library
+
+#include <math.h>
 
 #define PI 3.1415926535897932384626433832795f
 

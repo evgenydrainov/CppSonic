@@ -5,7 +5,7 @@
 #include "TileSet.h"
 #include "TileMap.h"
 
-#define MAX_OBJECTS 1000
+#define MAX_OBJECTS 1024
 
 enum {
 	INPUT_RIGHT = 1,
@@ -50,6 +50,7 @@ struct World {
 	int target_h;
 
 	bool debug;
+	bool was_debug;
 
 	void Init();
 	void Quit();

@@ -3,10 +3,9 @@
 #include "Game.h"
 #include "mathh.h"
 #include "stb_sprintf.h"
+#include "misc.h"
 
 #include <SDL_image.h>
-#include <math.h>
-#include <string.h>
 
 #define GRAVITY 0.21875f
 
@@ -31,7 +30,7 @@ void World::load_objects(const char* fname) {
 		f = SDL_RWFromFile(fname, "rb");
 
 		if (!f) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Couldn't open objects file.", nullptr);
+			ErrorMessageBox("Couldn't open objects file.");
 			goto out;
 		}
 
@@ -39,7 +38,7 @@ void World::load_objects(const char* fname) {
 		SDL_RWread(f, &object_count, sizeof(object_count), 1);
 
 		if (object_count < 0 || object_count >= MAX_OBJECTS) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Invalid objects file.", nullptr);
+			ErrorMessageBox("Invalid objects file.");
 			goto out;
 		}
 
@@ -57,12 +56,7 @@ out:
 }
 
 void World::Init() {
-	objects = (Object*) calloc(MAX_OBJECTS, sizeof(*objects));
-
-	if (!objects) {
-		SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
-		exit(1);
-	}
+	objects = (Object*) ecalloc(MAX_OBJECTS, sizeof(*objects));
 
 	target_w = GAME_W;
 	target_h = GAME_H;
@@ -314,13 +308,15 @@ SensorResult World::SensorCheckRight(float x, float y, int layer) {
 		if (uint8_t* h = tileset.GetTileWidth(tile.index)) {
 			if (tile.hflip && tile.vflip) {
 				int hh = h[15 - iy % 16];
-				if (hh == 16) height = 16;
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
 			} else if (!tile.hflip && tile.vflip) {
 				int hh = h[15 - iy % 16];
 				if (hh <= 0x10) height = hh;
 			} else if (tile.hflip && !tile.vflip) {
 				int hh = h[iy % 16];
-				if (hh == 16) height = 16;
+				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
+				else if (hh == 16) height = 16;
 			} else if (!tile.hflip && !tile.vflip) {
 				int hh = h[iy % 16];
 				if (hh <= 0x10) height = hh;
@@ -405,10 +401,10 @@ SensorResult World::SensorCheckUp(float x, float y, int layer) {
 		if (uint8_t* h = tileset.GetTileHeight(tile.index)) {
 			if (tile.hflip && tile.vflip) {
 				int hh = h[15 - ix % 16];
-				if (hh == 16) height = 16;
+				if (hh <= 0x10) height = hh;
 			} else if (!tile.hflip && tile.vflip) {
 				int hh = h[ix % 16];
-				if (hh == 16) height = 16;
+				if (hh <= 0x10) height = hh;
 			} else if (tile.hflip && !tile.vflip) {
 				int hh = h[15 - ix % 16];
 				if (hh >= 0xF0) height = 16 - (hh - 0xF0);
@@ -694,6 +690,15 @@ bool World::IsPushSensorFActive(Player* p) {
 	return false;
 }
 
+static bool player_roll_condition(Player* p, uint32_t& input) {
+	int input_h = 0;
+	input_h += (input & INPUT_RIGHT) != 0;
+	input_h -= (input & INPUT_LEFT)  != 0;
+	return (fabsf(p->ground_speed) >= 0.5f
+			&& (input & INPUT_DOWN)
+			&& input_h == 0);
+}
+
 void World::GroundSensorCollision(Player* p) {
 	if (!AreGroundSensorsActive(p)) {
 		return;
@@ -768,9 +773,7 @@ void World::GroundSensorCollision(Player* p) {
 		}
 
 		if (p->state == PlayerState::AIR) {
-			p->state = PlayerState::GROUND;
 			float a = angle_wrap(p->ground_angle);
-
 			// if (a <= 23.0f || a >= 339.0f) {
 			if (a <= 22.0f || a >= 339.0f) {
 				// flat
@@ -792,6 +795,12 @@ void World::GroundSensorCollision(Player* p) {
 				} else {
 					p->ground_speed = p->yspeed * -sign(dsin(p->ground_angle));
 				}
+			}
+
+			if (player_roll_condition(p, input)) {
+				p->state = PlayerState::ROLL;
+			} else {
+				p->state = PlayerState::GROUND;
 			}
 		}
 	} else {
@@ -824,8 +833,8 @@ void World::PushSensorCollision(Player* p) {
 						p->y -= (float) res.dist;
 						break;
 				}
-				if (p->state == PlayerState::AIR) p->xspeed = 0.0f;
-				else p->ground_speed = 0.0f;
+				p->ground_speed = 0.0f;
+				p->xspeed = 0.0f;
 			}
 		}
 	}
@@ -854,8 +863,8 @@ void World::PushSensorCollision(Player* p) {
 						p->y += (float) res.dist;
 						break;
 				}
-				if (p->state == PlayerState::AIR) p->xspeed = 0.0f;
-				else p->ground_speed = 0.0f;
+				p->ground_speed = 0.0f;
+				p->xspeed = 0.0f;
 			}
 		}
 	}
@@ -882,10 +891,8 @@ static void set_player_mode(Player* p) {
 
 void World::UpdatePlayer(Player* p, float delta) {
 	int input_h = 0;
-	if (p->control_lock == 0.0f) {
-		if (input & INPUT_LEFT)  input_h--;
-		if (input & INPUT_RIGHT) input_h++;
-	}
+	input_h -= (input & INPUT_LEFT)  != 0;
+	input_h += (input & INPUT_RIGHT) != 0;
 
 	auto player_jump = [](Player* p) {
 		p->xspeed -= PLAYER_JUMP_FORCE * dsin(p->ground_angle);
@@ -920,12 +927,12 @@ void World::UpdatePlayer(Player* p, float delta) {
 
 		float left = p->width_radius  + 1.0f;
 		float top  = p->height_radius + 1.0f;
-		float right  = (float)tilemap.width  * 16.0f - p->width_radius  - 1.0f;
-		float bottom = (float)tilemap.height * 16.0f - p->height_radius - 1.0f;
+		float right  = float(tilemap.width  * 16 - 1) - p->width_radius;
+		float bottom = float(tilemap.height * 16 - 1) - p->height_radius;
 
-		if (p->x < left)   {p->x = left;  p->ground_speed = 0.0f;}
-		if (p->x > right)  {p->x = right; p->ground_speed = 0.0f;}
-		if (p->y < top)    {p->y = top;}
+		if (p->x < left)   {p->x = left;  p->ground_speed = 0.0f; p->xspeed = 0.0f;}
+		if (p->x > right)  {p->x = right; p->ground_speed = 0.0f; p->xspeed = 0.0f;}
+		// if (p->y < top)    {p->y = top;}
 		if (p->y > bottom) {p->y = bottom;}
 	};
 
@@ -995,14 +1002,15 @@ void World::UpdatePlayer(Player* p, float delta) {
 					p->ground_speed = approach(p->ground_speed, 0.0f, PLAYER_FRICTION * delta);
 				} else {
 					if (input_h == -sign_int(p->ground_speed)) {
-						p->ground_speed += (float)input_h * PLAYER_DEC * delta;
+						p->ground_speed += float(input_h) * PLAYER_DEC * delta;
 					} else {
-						p->ground_speed += (float)input_h * PLAYER_ACC * delta;
+						if (fabsf(p->ground_speed) < PLAYER_TOP_SPEED) {
+							p->ground_speed += float(input_h) * PLAYER_ACC * delta;
+							p->ground_speed = clamp(p->ground_speed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
+						}
 					}
 				}
 			}
-
-			p->ground_speed = clamp(p->ground_speed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
 
 			player_grounded_physics(p, delta);
 
@@ -1068,13 +1076,11 @@ void World::UpdatePlayer(Player* p, float delta) {
 			}
 
 			// Check for starting a roll.
-			if (fabsf(p->ground_speed) >= 0.5f) {
-				if ((input & INPUT_DOWN) && input_h == 0) {
-					p->state = PlayerState::ROLL;
-					p->next_anim = anim_roll;
-					p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
-					break;
-				}
+			if (player_roll_condition(p, input)) {
+				p->state = PlayerState::ROLL;
+				p->next_anim = anim_roll;
+				p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
+				break;
 			}
 
 			p->control_lock = max(p->control_lock - delta, 0.0f);
@@ -1102,7 +1108,8 @@ void World::UpdatePlayer(Player* p, float delta) {
 			p->frame_duration = (int) max(0.0f, 4.0f - fabsf(p->ground_speed));
 
 			if (sign_int(p->ground_speed) != p->facing
-				/* || fabsf(p->ground_speed) < 0.5f */) {
+				// || fabsf(p->ground_speed) < 0.5f
+				) {
 				p->state = PlayerState::GROUND;
 				break;
 			}
@@ -1131,9 +1138,12 @@ void World::UpdatePlayer(Player* p, float delta) {
 
 			// Update X Speed based on directional input.
 			const float air_acceleration_speed = 0.09375f;
-			p->xspeed += (float)input_h * air_acceleration_speed * delta;
-
-			p->xspeed = clamp(p->xspeed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
+			if (input_h != 0) {
+				if (fabsf(p->xspeed) < PLAYER_TOP_SPEED || input_h == -sign_int(p->xspeed)) {
+					p->xspeed += float(input_h) * air_acceleration_speed * delta;
+					p->xspeed = clamp(p->xspeed, -PLAYER_TOP_SPEED, PLAYER_TOP_SPEED);
+				}
+			}
 
 			// Apply air drag.
 			if (-4.0f < p->yspeed && p->yspeed < 0.0f) {
@@ -1209,14 +1219,20 @@ void World::Update(float delta) {
 
 		input_press   = (~prev) & input;
 		input_release = prev & (~input);
+
+		if (p->control_lock > 0.0f) {
+			input         = 0;
+			input_press   = 0;
+			input_release = 0;
+		}
 	}
 
-	if (!debug) {
+	if (!debug && !was_debug) {
 		UpdatePlayer(p, delta);
 
 		if (camera_lock == 0.0f) {
-			float cam_target_x = floorf(p->x) - float(target_w / 2);
-			float cam_target_y = floorf(p->y) + p->height_radius - 19.0f - float(target_h / 2);
+			float cam_target_x = p->x - float(target_w / 2);
+			float cam_target_y = p->y + p->height_radius - 19.0f - float(target_h / 2);
 
 			if (camera_x < cam_target_x - 8.0f) {
 				camera_x = min(camera_x + 16.0f * delta, cam_target_x - 8.0f);
@@ -1245,7 +1261,7 @@ void World::Update(float delta) {
 		camera_y = clamp(camera_y, 0.0f, float(tilemap.height * 16 - target_h));
 	} else {
 		float spd = 10.0f;
-		if (key[SDL_SCANCODE_LCTRL]) spd = 20.0f;
+		if (key[SDL_SCANCODE_LCTRL])  spd = 20.0f;
 		if (key[SDL_SCANCODE_LSHIFT]) spd = 5.0f;
 
 		if (key[SDL_SCANCODE_LEFT])  {p->x -= spd * delta; camera_x -= spd * delta;}
@@ -1258,10 +1274,11 @@ void World::Update(float delta) {
 		if (key[SDL_SCANCODE_I]) {camera_y -= spd * delta;}
 		if (key[SDL_SCANCODE_K]) {camera_y += spd * delta;}
 
-		p->xspeed = 0.0f;
-		p->yspeed = 0.0f;
-		p->ground_speed = 0.0f;
-		p->state = PlayerState::AIR;
+		if (!debug && was_debug) {
+			p->xspeed = 0.0f;
+			p->yspeed = 0.0f;
+			p->ground_speed = 0.0f;
+		}
 	}
 
 	for (int i = 0; i < object_count; i++) {
@@ -1303,6 +1320,8 @@ void World::Update(float delta) {
 	}
 
 	camera_lock = max(camera_lock - delta, 0.0f);
+
+	was_debug = debug;
 }
 
 #define SENSOR_A_COLOR 0, 240, 0, 255
@@ -1543,6 +1562,37 @@ void World::Draw(float delta) {
 		SDL_Rect rect = {tile_x * 16 - (int)camera_x, tile_y * 16 - (int)camera_y, 16, 16};
 		SDL_SetRenderDrawColor(game->renderer, 196, 196, 196, 255);
 		SDL_RenderDrawRect(game->renderer, &rect);
+
+		SDL_SetRenderDrawColor(game->renderer, 255, 255, 255, 255);
+		if (key[SDL_SCANCODE_RIGHT]) {
+			SensorResult res = SensorCheckRight(x, y, 0);
+			SDL_RenderDrawLine(game->renderer,
+							   int(x) - int(camera_x),
+							   int(y) - int(camera_y),
+							   int(x) + res.dist - int(camera_x),
+							   int(y) - int(camera_y));
+		} else if (key[SDL_SCANCODE_UP]) {
+			SensorResult res = SensorCheckUp(x, y, 0);
+			SDL_RenderDrawLine(game->renderer,
+							   int(x) - int(camera_x),
+							   int(y) - int(camera_y),
+							   int(x) - int(camera_x),
+							   int(y) - res.dist - int(camera_y));
+		} else if (key[SDL_SCANCODE_LEFT]) {
+			SensorResult res = SensorCheckLeft(x, y, 0);
+			SDL_RenderDrawLine(game->renderer,
+							   int(x) - int(camera_x),
+							   int(y) - int(camera_y),
+							   int(x) - res.dist - int(camera_x),
+							   int(y) - int(camera_y));
+		} else {
+			SensorResult res = SensorCheckDown(x, y, 0);
+			SDL_RenderDrawLine(game->renderer,
+							   int(x) - int(camera_x),
+							   int(y) - int(camera_y),
+							   int(x) - int(camera_x),
+							   int(y) + res.dist - int(camera_y));
+		}
 	}
 
 	if (key[SDL_SCANCODE_1]) {

@@ -14,9 +14,7 @@ void Game::Init() {
 
 	if (SDL_Init(SDL_INIT_VIDEO
 				 | SDL_INIT_AUDIO) != 0) {
-		char buf[256];
-		stb_snprintf(buf, sizeof(buf), "SDL Couldn't initialize: %s", SDL_GetError());
-		SDL_ShowSimpleMessageBox(0, "ERROR", buf, nullptr);
+		ErrorMessageBox("SDL couldn't initialize: %s", SDL_GetError());
 		exit(1);
 	}
 
@@ -223,7 +221,7 @@ void Game::Draw(float delta) {
 							 world->player.ground_speed,
 							 world->player.ground_angle,
 							 anim_get_name(world->player.anim));
-				draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+				draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y).y;
 
 				if (world->debug) {
 					char buf[200];
@@ -243,7 +241,7 @@ void Game::Draw(float delta) {
 								 tile.hflip, tile.vflip,
 								 tile.top_solid,
 								 tile.left_right_bottom_solid);
-					draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+					draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y).y;
 
 					if (height) {
 						char buf[100];
@@ -253,7 +251,7 @@ void Game::Draw(float delta) {
 									 "\n",
 									 height[ 0], height[ 1], height[ 2], height[ 3], height[ 4], height[ 5], height[ 6], height[ 7],
 									 height[ 8], height[ 9], height[10], height[11], height[12], height[13], height[14], height[15]);
-						draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y, 0, 0, {220, 220, 220, 255}).y;
+						draw_y = DrawTextShadow(renderer, &fnt_cp437, buf, draw_x, draw_y).y;
 					}
 				}
 

@@ -3,57 +3,48 @@
 #include "Game.h"
 
 #include <SDL_image.h>
-#include <stdlib.h> // for calloc, exit
+#include "misc.h"
 
 void TileSet::LoadFromFile(const char* binary_filepath, const char* texture_filepath) {
-	auto load_binary = [&]() -> void {
-		SDL_RWops* f = SDL_RWFromFile(binary_filepath, "rb");
+	auto load_binary = [this](const char* binary_filepath) {
+		SDL_RWops* f = nullptr;
 
-		if (!f) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Couldn't open tileset.", nullptr);
-			return;
+		{
+			f = SDL_RWFromFile(binary_filepath, "rb");
+
+			if (!f) {
+				ErrorMessageBox("Couldn't open tileset.");
+				goto out;
+			}
+
+			int tile_count;
+			SDL_RWread(f, &tile_count, sizeof(tile_count), 1);
+
+			if (tile_count <= 0) {
+				ErrorMessageBox("Invalid tileset size.");
+				goto out;
+			}
+
+			this->tile_count = tile_count;
+
+			tile_heights = (uint8_t*) ecalloc(tile_count, sizeof(*tile_heights) * 16);
+			tile_widths  = (uint8_t*) ecalloc(tile_count, sizeof(*tile_widths)  * 16);
+			tile_angles  = (float*)   ecalloc(tile_count, sizeof(*tile_angles));
+
+			SDL_RWread(f, tile_heights, 16 * sizeof(*tile_heights), tile_count);
+			SDL_RWread(f, tile_widths,  16 * sizeof(*tile_widths), tile_count);
+			SDL_RWread(f, tile_angles,  sizeof(*tile_angles), tile_count);
 		}
 
-		int tile_count;
-		SDL_RWread(f, &tile_count, sizeof(tile_count), 1);
-
-		if (tile_count <= 0) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Invalid tileset size.", nullptr);
-			SDL_RWclose(f);
-			return;
-		}
-
-		this->tile_count = tile_count;
-		tile_heights = (uint8_t*) calloc(tile_count, sizeof(*tile_heights) * 16);
-		if (!tile_heights) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
-			exit(1);
-		}
-
-		tile_widths = (uint8_t*) calloc(tile_count, sizeof(*tile_widths)  * 16);
-		if (!tile_widths) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
-			exit(1);
-		}
-
-		tile_angles = (float*) calloc(tile_count, sizeof(*tile_angles));
-		if (!tile_angles) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Out of memory.", nullptr);
-			exit(1);
-		}
-
-		SDL_RWread(f, tile_heights, 16 * sizeof(*tile_heights), tile_count);
-		SDL_RWread(f, tile_widths,  16 * sizeof(*tile_widths), tile_count);
-		SDL_RWread(f, tile_angles,  sizeof(*tile_angles), tile_count);
-
-		SDL_RWclose(f);
+	out:
+		if (f) SDL_RWclose(f);
 	};
 
-	auto load_texture = [&]() -> void {
+	auto load_texture = [this](const char* texture_filepath) {
 		texture = IMG_LoadTexture(game->renderer, texture_filepath);
 
 		if (!texture) {
-			SDL_ShowSimpleMessageBox(0, "ERROR", "Couldn't load tileset texture.", nullptr);
+			ErrorMessageBox("Couldn't load tileset texture.");
 			return;
 		}
 
@@ -64,8 +55,8 @@ void TileSet::LoadFromFile(const char* binary_filepath, const char* texture_file
 		// tiles_in_row = w / 16;
 	};
 
-	load_binary();
-	load_texture();
+	load_binary(binary_filepath);
+	load_texture(texture_filepath);
 
 	if (texture) {
 		GenCollisionTextures();
